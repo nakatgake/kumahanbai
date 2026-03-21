@@ -47,7 +47,7 @@
                         <a href="/orders/{{ order.id }}/print_delivery" class="btn btn-sm btn-info" title="納品書印刷" target="_blank">🖨️</a>
                         <a href="/orders/edit/{{ order.id }}" class="btn btn-sm btn-warning">編集</a>
                         <form action="/orders/{{ order.id }}/copy" method="post" style="display: inline;">
-                            <button type="submit" class="btn btn-sm btn-secondary">コピー</button>
+                            <button type="submit" class="btn btn-sm" style="background: #8e44ad; border: none; color: white;">コピー</button>
                         </form>
                         {% if not order.invoice %}
                         <form action="/orders/{{ order.id }}/invoice" method="post" style="display: inline;">

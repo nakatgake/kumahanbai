@@ -50,7 +50,7 @@
                             <button type="submit" class="btn btn-sm btn-danger">削除</button>
                         </form>
                         <form action="/quotations/{{ quote.id }}/copy" method="post" style="display: inline;">
-                            <button type="submit" class="btn btn-sm btn-secondary">コピー</button>
+                            <button type="submit" class="btn btn-sm" style="background: #8e44ad; border: none; color: white;">コピー</button>
                         </form>
                         {% if quote.status.value == '下書き' or quote.status.value == '送付済み' or quote.status.value == '失注' %}
                         <form action="/quotations/{{ quote.id }}/order" method="post" style="display: inline;">
