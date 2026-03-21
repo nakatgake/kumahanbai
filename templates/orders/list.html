@@ -27,6 +27,7 @@
                     <th>顧客名</th>
                     <th>受注日</th>
                     <th>合計金額</th>
+                    <th>ステータス</th>
                     <th>操作</th>
                 </tr>
             </thead>
@@ -37,14 +38,25 @@
                     <td>{{ order.quotation.customer.company }}</td>
                     <td>{{ order.order_date.strftime('%Y/%m/%d') }}</td>
                     <td>¥{{ "{:,.0f}".format(order.total_amount) }}</td>
+                    <td>
+                        <span class="badge {% if order.status.value == '完了' %}badge-success{% elif order.status.value == '出荷済み' %}badge-info{% else %}badge-warning{% endif %}">
+                            {{ order.status.value }}
+                        </span>
+                    </td>
                     <td style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                        <a href="/orders/{{ order.id }}/print_delivery" class="btn btn-sm btn-info" target="_blank">🖨️</a>
+                        <a href="/orders/{{ order.id }}/print_delivery" class="btn btn-sm btn-info" title="納品書印刷" target="_blank">🖨️</a>
                         <a href="/orders/edit/{{ order.id }}" class="btn btn-sm btn-warning">編集</a>
+                        <form action="/orders/{{ order.id }}/copy" method="post" style="display: inline;">
+                            <button type="submit" class="btn btn-sm btn-secondary">コピー</button>
+                        </form>
                         {% if not order.invoice %}
                         <form action="/orders/{{ order.id }}/invoice" method="post" style="display: inline;">
-                            <button type="submit" class="btn btn-sm btn-primary" style="background: #27ae60;">納品</button>
+                            <button type="submit" class="btn btn-sm btn-primary" style="background: #27ae60; border-color: #27ae60;">納品</button>
                         </form>
                         {% endif %}
+                        <form action="/orders/delete/{{ order.id }}" method="post" style="display: inline;" onsubmit="return confirm('本当にこの受注データを削除しますか？（在庫数は元に戻ります）')">
+                            <button type="submit" class="btn btn-sm btn-danger">削除</button>
+                        </form>
                     </td>
                 </tr>
                 {% else %}

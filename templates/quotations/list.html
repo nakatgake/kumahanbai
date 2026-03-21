@@ -27,6 +27,7 @@
                     <th>顧客名</th>
                     <th>発行日</th>
                     <th>合計金額 (円)</th>
+                    <th>ステータス</th>
                     <th>操作</th>
                 </tr>
             </thead>
@@ -37,14 +38,30 @@
                     <td>{{ quote.customer.company }}</td>
                     <td>{{ quote.issue_date.strftime('%Y/%m/%d') }}</td>
                     <td>¥{{ "{:,.0f}".format(quote.total_amount) }}</td>
+                    <td>
+                        <span class="badge {% if quote.status.value == '受注済み' %}badge-success{% elif quote.status.value == '下書き' %}badge-secondary{% else %}badge-info{% endif %}">
+                            {{ quote.status.value }}
+                        </span>
+                    </td>
                     <td style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                        <a href="/quotations/{{ quote.id }}/print" class="btn btn-sm btn-info" target="_blank">🖨️</a>
+                        <a href="/quotations/{{ quote.id }}/print" class="btn btn-sm btn-info" title="印刷" target="_blank">🖨️</a>
                         <a href="/quotations/edit/{{ quote.id }}" class="btn btn-sm btn-warning">編集</a>
-                        {% if quote.status.value != '受注済み' %}
+                        <form action="/quotations/{{ quote.id }}/copy" method="post" style="display: inline;">
+                            <button type="submit" class="btn btn-sm btn-secondary">コピー</button>
+                        </form>
+                        {% if quote.status.value == '下書き' or quote.status.value == '送付済み' or quote.status.value == '失注' %}
                         <form action="/quotations/{{ quote.id }}/order" method="post" style="display: inline;">
                             <button type="submit" class="btn btn-sm btn-primary" style="background: #27ae60; border-color: #27ae60;">受注</button>
                         </form>
                         {% endif %}
+                        {% if quote.status.value != '下書き' %}
+                        <form action="/quotations/{{ quote.id }}/cancel" method="post" style="display: inline;" onsubmit="return confirm('状態を取り消して下書きに戻しますか？（受注データがある場合は削除されます）')">
+                            <button type="submit" class="btn btn-sm btn-danger" style="background: #95a5a6; border-color: #95a5a6;">取消</button>
+                        </form>
+                        {% endif %}
+                        <form action="/quotations/delete/{{ quote.id }}" method="post" style="display: inline;" onsubmit="return confirm('本当にこの見積を削除しますか？')">
+                            <button type="submit" class="btn btn-sm btn-danger">削除</button>
+                        </form>
                     </td>
                 </tr>
                 {% else %}
