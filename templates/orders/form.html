@@ -7,7 +7,7 @@
 </div>
 
 <div class="card">
-    <form action="{{ '/orders/edit/' + (order.id|string) if order else '/orders/new' }}" method="post">
+    <form action="{{ '/orders/edit/' + (order.id|string) if order else '/orders/new' }}" method="post" onsubmit="return validateForm()">
         <div class="form-group">
             <label>顧客選択</label>
             <div style="position: relative;">
@@ -45,7 +45,6 @@
                         <th style="width: 200px;">数量</th>
                         <th style="width: 200px;">小計</th>
                         <th style="width: 70px;"></th>
-                        <th style="width: 50px;"></th>
                     </tr>
                 </thead>
                 <tbody id="line-items">
@@ -103,6 +102,16 @@
 </div>
 
 <script>
+    function validateForm() {
+        const customerId = document.getElementById('selected-customer-id').value;
+        if (!customerId || customerId === "") {
+            alert("顧客を選択してください。検索窓に名前を入力した後、表示される候補をクリックして確定させる必要があります。");
+            document.getElementById('customer-search').focus();
+            return false;
+        }
+        return true;
+    }
+
     function updateRowSubtotal(rowId) {
         const row = document.getElementById(rowId);
         const price = parseFloat(row.querySelector('input[name="price[]"]').value) || 0;

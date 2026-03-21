@@ -7,7 +7,7 @@
 </div>
 
 <div class="card">
-    <form action="{{ '/quotations/edit/' + (quotation.id|string) if quotation else '/quotations/new' }}" method="post" id="quote-form">
+    <form action="{{ '/quotations/edit/' + (quotation.id|string) if quotation else '/quotations/new' }}" method="post" id="quote-form" onsubmit="return validateForm()">
         <div class="form-grid">
             <div class="form-group">
                 <label>顧客を選択</label>
@@ -119,6 +119,16 @@
 </div>
 
 <script>
+    function validateForm() {
+        const customerId = document.getElementById('selected-customer-id').value;
+        if (!customerId || customerId === "") {
+            alert("顧客を選択してください。検索窓に名前を入力した後、表示される候補をクリックして確定させる必要があります。");
+            document.getElementById('customer-search').focus();
+            return false;
+        }
+        return true;
+    }
+
     function updateRowSubtotal(rowId) {
         const row = document.getElementById(rowId);
         const price = parseFloat(row.querySelector('input[name="price[]"]').value) || 0;

@@ -568,7 +568,7 @@ async def new_quotation(
 @app.post("/quotations/new")
 async def create_quotation(
     request: Request,
-    customer_id: int = Form(...),
+    customer_id: str = Form(""),
     quote_number: str = Form(...),
     issue_date: str = Form(...),
     expiry_date: str = Form(...),
@@ -577,6 +577,10 @@ async def create_quotation(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
+    if not customer_id or customer_id == "":
+        # もしフロントを抜けてきた場合
+        return HTMLResponse(content="<script>alert('顧客を選択してください'); history.back();</script>", status_code=400)
+    customer_id = int(customer_id)
     form_data = await request.form()
     product_ids = form_data.getlist("product_id[]")
     product_names = form_data.getlist("product_name[]")
@@ -644,7 +648,7 @@ async def edit_quotation(
 async def update_quotation(
     quote_id: int,
     request: Request,
-    customer_id: int = Form(...),
+    customer_id: str = Form(""),
     quote_number: str = Form(...),
     issue_date: str = Form(...),
     expiry_date: str = Form(...),
@@ -654,9 +658,10 @@ async def update_quotation(
     user: models.User = Depends(get_active_user)
 ):
     quotation = db.query(models.Quotation).get(quote_id)
-    if not quotation:
-        return RedirectResponse(url="/quotations", status_code=303)
+    if not customer_id or customer_id == "":
+        return HTMLResponse(content="<script>alert('顧客を選択してください'); history.back();</script>", status_code=400)
     
+    customer_id = int(customer_id)
     quotation.customer_id = customer_id
     quotation.quote_number = quote_number
     try:
@@ -999,12 +1004,15 @@ async def new_order_form(
 @app.post("/orders/new")
 async def create_direct_order(
     request: Request,
-    customer_id: int = Form(...),
+    customer_id: str = Form(""),
     order_number: str = Form(...),
     order_date: str = Form(...),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
+    if not customer_id or customer_id == "":
+        return HTMLResponse(content="<script>alert('顧客を選択してください'); history.back();</script>", status_code=400)
+    customer_id_int = int(customer_id)
     form_data = await request.form()
     product_ids = form_data.getlist("product_id[]")
     product_names = form_data.getlist("product_name[]")
@@ -1013,7 +1021,7 @@ async def create_direct_order(
 
     # Create a shadow quotation for this order
     quotation = models.Quotation(
-        customer_id=customer_id,
+        customer_id=customer_id_int,
         quote_number=order_number.replace("ORD-", "Q-AUTO-"),
         expiry_date=datetime.datetime.utcnow(),
         status=models.QuoteStatus.ORDERED,
@@ -1080,7 +1088,7 @@ async def edit_order(
 async def update_order(
     order_id: int,
     request: Request,
-    customer_id: int = Form(...),
+    customer_id: str = Form(""),
     order_number: str = Form(...),
     order_date: str = Form(...),
     db: Session = Depends(get_db),
@@ -1090,10 +1098,14 @@ async def update_order(
     if not order:
         return RedirectResponse(url="/orders", status_code=303)
     
+    if not customer_id or customer_id == "":
+        return HTMLResponse(content="<script>alert('顧客を選択してください'); history.back();</script>", status_code=400)
+    customer_id_int = int(customer_id)
+
     order.order_number = order_number
     order.order_date = datetime.datetime.strptime(order_date, '%Y-%m-%d')
     quotation = order.quotation
-    quotation.customer_id = customer_id
+    quotation.customer_id = customer_id_int
     quotation.issue_date = order.order_date # Keep Shadow Quotation in sync
     
     
@@ -1480,9 +1492,11 @@ async def search_products(q: str = "", db: Session = Depends(get_db), user: mode
     # Simple HTML response for HTMX
     html = ""
     for p in products:
-        # Pass all prices to the JS function
-        prices = f"{{retail: {p.price_retail}, a: {p.price_a}, b: {p.price_b}, c: {p.price_c}, d: {p.price_d}, e: {p.price_e}}}"
-        html += f'<div class="search-result" onclick="selectProduct({p.id}, \'{p.name}\', {prices})">{p.name} ({p.code}) - ¥{p.price_retail:,.0f}</div>'
+        # p.name をエスケープ (JS 用)
+        safe_name = p.name.replace("'", "\\'")
+        # prices も安全に文字列化
+        prices_js = f"{{retail: {p.price_retail}, a: {p.price_a}, b: {p.price_b}, c: {p.price_c}, d: {p.price_d}, e: {p.price_e}}}"
+        html += f'<div class="search-result" onclick="selectProduct({p.id}, \'{safe_name}\', {prices_js})">{p.name} ({p.code}) - ¥{p.price_retail:,.0f}</div>'
     return HTMLResponse(content=html if html else "<div>見つかりませんでした</div>")
 
 # API for HTMX Customer Search
@@ -1495,7 +1509,8 @@ async def search_customers(q: str = "", db: Session = Depends(get_db), user: mod
     for c in customers:
         rank_name = c.rank.name if c.rank else 'RETAIL'
         display_name = f"{c.company} ({c.name})" if c.company and c.name else (c.company or c.name or "名称未設定")
-        html += f'<div class="search-result" onclick="selectCustomer({c.id}, \'{display_name}\', \'{rank_name}\')">{display_name}</div>'
+        safe_display_name = display_name.replace("'", "\\'")
+        html += f'<div class="search-result" onclick="selectCustomer({c.id}, \'{safe_display_name}\', \'{rank_name}\')">{display_name}</div>'
     return HTMLResponse(content=html if html else "<div>見つかりませんでした</div>")
 
 # Settings / Backup & Restore
