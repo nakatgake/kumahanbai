@@ -111,6 +111,20 @@ tr:hover {
     background-color: #fcfcfc;
 }
 
+/* Form Tables */
+.table-responsive table input[type="number"],
+.table-responsive table input[type="text"] {
+    padding: 0.5rem;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    width: 100%;
+}
+
+.table-responsive table th {
+    background: #f8f9fa;
+    border-bottom: 2px solid #eee;
+}
+
 /* Forms */
 .form-group {
     margin-bottom: 1rem;
