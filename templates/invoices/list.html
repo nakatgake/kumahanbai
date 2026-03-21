@@ -1,0 +1,103 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="header" style="display: flex; justify-content: space-between; align-items: center;">
+    <h2>請求・入金管理</h2>
+    <div style="display: flex; gap: 1rem;">
+        <form action="/invoices" method="get" style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+            <input type="text" name="q" placeholder="請求番号・顧客名..." value="{{ search_query or '' }}" style="padding: 0.4rem; border: 1px solid #ddd; border-radius: 4px;">
+            <div style="display: flex; align-items: center; gap: 0.3rem;">
+                <input type="date" name="start_date" value="{{ start_date or '' }}" style="padding: 0.4rem; border: 1px solid #ddd; border-radius: 4px;">
+                <span>～</span>
+                <input type="date" name="end_date" value="{{ end_date or '' }}" style="padding: 0.4rem; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            <button type="submit" class="btn btn-sm btn-primary">検索</button>
+            <a href="/invoices/excel?q={{ search_query or '' }}&start_date={{ start_date or '' }}&end_date={{ end_date or '' }}" class="btn btn-sm btn-success">Excel出力</a>
+        </form>
+    </div>
+</div>
+
+<form action="/invoices/bulk_print" method="post" id="bulk-print-form" target="_blank">
+    <div style="margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem;">
+        <button type="submit" class="btn btn-primary">✅ 選択した請求書を一括印刷（発行済に変更）</button>
+        <span style="font-size: 0.85rem; color: #666;">※ 印刷後、選択した請求書は自動的に「請求書発行済」に変わります</span>
+    </div>
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 40px; text-align: center;"><input type="checkbox" id="select-all" onclick="toggleAll(this)"></th>
+                    <th>請求番号</th>
+                    <th>顧客名</th>
+                    <th>支払期限</th>
+                    <th>請求金額 (円)</th>
+                    <th>ステータス</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for invoice in invoices %}
+                <tr id="row-{{ invoice.id }}">
+                    <td style="text-align: center;"><input type="checkbox" name="invoice_ids[]" value="{{ invoice.id }}" class="invoice-checkbox"></td>
+                    <td>{{ invoice.invoice_number }}</td>
+                    <td>{{ invoice.order.quotation.customer.company }}</td>
+                    <td>{{ invoice.due_date.strftime('%Y/%m/%d') }}</td>
+                    <td>¥{{ "{:,.0f}".format(invoice.total_amount) }}</td>
+                    <td>
+                        <select
+                            name="status_{{ invoice.id }}"
+                            hx-post="/invoices/{{ invoice.id }}/set_status"
+                            hx-trigger="change"
+                            hx-target="#status-badge-{{ invoice.id }}"
+                            hx-swap="outerHTML"
+                            hx-include="[name='status_{{ invoice.id }}']"
+                            style="padding: 0.3rem 0.5rem; border-radius: 6px; border: 1px solid #ccc; font-size: 0.85rem; cursor: pointer;
+                            {% if invoice.status.name == 'PAID' %}background: #e8f5e9; color: #2e7d32;
+                            {% elif invoice.status.name == 'ISSUED' %}background: #e1f5fe; color: #0288d1;
+                            {% else %}background: #f5f5f5; color: #666;{% endif %}"
+                            onchange="updateRowStyle(this)"
+                        >
+                            <option value="UNPAID" {% if invoice.status.name == 'UNPAID' %}selected{% endif %}>未発行</option>
+                            <option value="ISSUED" {% if invoice.status.name == 'ISSUED' %}selected{% endif %}>請求書発行済</option>
+                            <option value="PAID"   {% if invoice.status.name == 'PAID'   %}selected{% endif %}>入金済（完了）</option>
+                        </select>
+                        <span id="status-badge-{{ invoice.id }}" style="display: none;"></span>
+                    </td>
+                    <td style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <a href="/invoices/{{ invoice.id }}/print" class="btn btn-sm btn-info" target="_blank">🖨️ 印刷</a>
+                        <a href="/invoices/edit/{{ invoice.id }}" class="btn btn-sm btn-warning">編集</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" style="text-align: center; color: #999;">請求データがありません。</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</form>
+
+<script>
+function toggleAll(source) {
+    const checkboxes = document.getElementsByClassName('invoice-checkbox');
+    for (let i = 0; i < checkboxes.length; i++) {
+        checkboxes[i].checked = source.checked;
+    }
+}
+
+function updateRowStyle(sel) {
+    const val = sel.value;
+    if (val === 'PAID') {
+        sel.style.background = '#e8f5e9';
+        sel.style.color = '#2e7d32';
+    } else if (val === 'ISSUED') {
+        sel.style.background = '#e1f5fe';
+        sel.style.color = '#0288d1';
+    } else {
+        sel.style.background = '#f5f5f5';
+        sel.style.color = '#666';
+    }
+}
+</script>
+{% endblock %}

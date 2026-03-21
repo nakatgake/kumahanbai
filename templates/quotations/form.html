@@ -1,0 +1,209 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>{{ '見積編集' if quotation else '新規見積作成' }}</h2>
+    <a href="/quotations" class="btn" style="background: #ccc;">戻る</a>
+</div>
+
+<div class="card">
+    <form action="{{ '/quotations/edit/' + (quotation.id|string) if quotation else '/quotations/new' }}" method="post" id="quote-form">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+            <div class="form-group">
+                <label>顧客を選択</label>
+                <div style="position: relative;">
+                    <input type="text" id="customer-search" 
+                           placeholder="顧客名・会社名で検索..." 
+                           value="{{ (quotation.customer.company or '') + (' (' + quotation.customer.name + ')' if quotation.customer.name else '') if quotation and quotation.customer else '' }}"
+                           hx-get="/api/customers/search" 
+                           hx-trigger="keyup changed delay:300ms" 
+                           hx-target="#customer-search-results"
+                           style="width: 100%;">
+                    <input type="hidden" name="customer_id" id="selected-customer-id" value="{{ quotation.customer_id if quotation else '' }}" required>
+                    <input type="hidden" id="selected-customer-rank" value="{{ quotation.customer.rank.name if quotation and quotation.customer else 'RETAIL' }}">
+                    <div id="customer-search-results" class="search-results-dropdown"></div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>見積番号</label>
+                <input type="text" name="quote_number" value="{{ quotation.quote_number if quotation else 'Q-' + (range(1000, 9999) | random | string) }}" required>
+            </div>
+            <div class="form-group">
+                <label>発行日</label>
+                <input type="date" name="issue_date" value="{{ quotation.issue_date.strftime('%Y-%m-%d') if quotation else '' }}" required id="issue_date">
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label>有効期限</label>
+                    <input type="date" name="expiry_date" value="{{ quotation.expiry_date.strftime('%Y-%m-%d') if quotation else '' }}" required id="expiry_date">
+                </div>
+                <div class="form-group">
+                    <label>お支払い期限</label>
+                    <input type="date" name="payment_due_date" value="{{ quotation.payment_due_date.strftime('%Y-%m-%d') if quotation and quotation.payment_due_date else '' }}">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>お支払い方法</label>
+                <input type="text" name="payment_method" value="{{ quotation.payment_method if quotation else '銀行振り込み' }}">
+            </div>
+        </div>
+
+        <h3 style="margin-bottom: 1rem;">明細項目</h3>
+        <div style="margin-bottom: 1.5rem; border: 1px solid #eee; padding: 1rem; border-radius: 8px; background: #fdfdfd;">
+            <p style="font-size: 0.9rem; margin-bottom: 0.5rem; color: #666;">商品台帳から検索して追加:</p>
+            <div style="display: flex; gap: 1rem;">
+                <div style="position: relative; flex: 1;">
+                    <input type="text" id="product-search" 
+                           placeholder="商品名・コードで検索..." 
+                           hx-get="/api/products/search" 
+                           hx-trigger="keyup changed delay:300ms" 
+                           hx-target="#search-results">
+                    <div id="search-results" class="search-results-dropdown"></div>
+                </div>
+                <button type="button" class="btn" onclick="addManualRow()" style="background: #95a5a6; color: white;">+ 行を手動追加</button>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>品名</th>
+                    <th style="width: 150px;">単価</th>
+                    <th style="width: 100px;">数量</th>
+                    <th style="width: 150px;">小計</th>
+                    <th style="width: 50px;">操作</th>
+                </tr>
+            </thead>
+            <tbody id="line-items">
+                {% if quotation %}
+                    {% for item in quotation.items %}
+                    <tr id="row-{{ loop.index0 }}">
+                        <td>
+                            <input type="hidden" name="product_id[]" value="{{ item.product_id or '' }}">
+                            {% if item.product_id %}
+                                <input type="hidden" name="product_name[]" value="{{ item.description }}">
+                                {{ item.description }}
+                            {% else %}
+                                手入力: <input type="text" name="product_name[]" value="{{ item.description }}" required style="width: 70%; display: inline-block;">
+                            {% endif %}
+                        </td>
+                        <td><input type="number" name="price[]" value="{{ item.unit_price }}" step="0.01" onchange="updateRowSubtotal('row-{{ loop.index0 }}')" required></td>
+                        <td><input type="number" name="quantity[]" value="{{ item.quantity }}" onchange="updateRowSubtotal('row-{{ loop.index0 }}')" required></td>
+                        <td class="subtotal">¥{{ "{:,.0f}".format(item.subtotal) }}</td>
+                        <td><button type="button" class="btn btn-small btn-danger" onclick="removeRow('row-{{ loop.index0 }}')">削除</button></td>
+                    </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+
+        <div style="text-align: right; margin-top: 1.5rem; font-size: 1.2rem; font-weight: bold;">
+            合計金額: <span id="grand-total">¥{{ "{:,.0f}".format(quotation.total_amount) if quotation else '0' }}</span>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="margin-top: 2rem; width: 100%; height: 50px; font-size: 1.1rem;">
+            {{ '更新を保存する' if quotation else '見積を保存して登録' }}
+        </button>
+    </form>
+    {% if quotation %}
+    <div style="margin-top: 3rem; padding: 1.5rem; border: 1px solid #ffcccb; border-radius: 8px; background-color: #fff5f5;">
+        <h3 style="color: #e74c3c; margin-bottom: 1rem; font-size: 1.1rem;">⚠️ 危険な操作</h3>
+        <p style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">この見積データを完全に削除します。この操作は取り消せません。</p>
+        <form hx-post="/quotations/delete/{{ quotation.id }}" hx-confirm="この見積を削除してもよろしいですか？">
+            <button type="submit" class="btn btn-danger" style="background: #e74c3c; border: none; padding: 0.7rem 1.2rem;">この見積を削除する</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    function updateRowSubtotal(rowId) {
+        const row = document.getElementById(rowId);
+        const price = parseFloat(row.querySelector('input[name="price[]"]').value) || 0;
+        const qty = parseInt(row.querySelector('input[name="quantity[]"]').value) || 0;
+        const subtotal = price * qty;
+        row.querySelector('.subtotal').innerText = `¥${new Intl.NumberFormat().format(subtotal)}`;
+        updateGrandTotal();
+    }
+
+    function selectCustomer(id, name, rank) {
+        document.getElementById('selected-customer-id').value = id;
+        document.getElementById('selected-customer-rank').value = rank;
+        document.getElementById('customer-search').value = name;
+        document.getElementById('customer-search-results').innerHTML = '';
+        
+        // When customer changes, we might want to update existing rows, 
+        // but for now we'll just let new rows use the new rank.
+    }
+
+    function addManualRow() {
+        const tableBody = document.getElementById('line-items');
+        const rowId = 'row-' + Date.now();
+        const newRow = document.createElement('tr');
+        newRow.id = rowId;
+        newRow.innerHTML = `
+            <td>
+                <input type="hidden" name="product_id[]" value="">
+                手入力: <input type="text" name="product_name[]" placeholder="品名を手入力" required style="width: 70%; display: inline-block;">
+            </td>
+            <td><input type="number" name="price[]" value="0" step="0.01" onchange="updateRowSubtotal('${rowId}')" required></td>
+            <td><input type="number" name="quantity[]" value="1" onchange="updateRowSubtotal('${rowId}')" required></td>
+            <td class="subtotal">¥0</td>
+            <td><button type="button" class="btn btn-small btn-danger" onclick="removeRow('${rowId}')">削除</button></td>
+        `;
+        tableBody.appendChild(newRow);
+    }
+
+    function selectProduct(id, name, prices) {
+        const rank = document.getElementById('selected-customer-rank').value || 'RETAIL';
+        
+        let price = prices.retail;
+        if (rank === 'RANK_A') price = prices.a || prices.retail;
+        else if (rank === 'RANK_B') price = prices.b || prices.retail;
+        else if (rank === 'RANK_C') price = prices.c || prices.retail;
+        else if (rank === 'RANK_D') price = prices.d || prices.retail;
+        else if (rank === 'RANK_E') price = prices.e || prices.retail;
+
+        const tableBody = document.getElementById('line-items');
+        const rowId = 'row-' + id + '-' + Date.now();
+        const newRow = document.createElement('tr');
+        newRow.id = rowId;
+        newRow.innerHTML = `
+            <td>
+                <input type="hidden" name="product_id[]" value="${id}">
+                <input type="hidden" name="product_name[]" value="${name}">
+                ${name}
+            </td>
+            <td><input type="number" name="price[]" value="${price}" step="0.01" onchange="updateRowSubtotal('${rowId}')" required></td>
+            <td><input type="number" name="quantity[]" value="1" onchange="updateRowSubtotal('${rowId}')" required></td>
+            <td class="subtotal">¥${new Intl.NumberFormat().format(price)}</td>
+            <td><button type="button" class="btn btn-small btn-danger" onclick="removeRow('${rowId}')">削除</button></td>
+        `;
+        tableBody.appendChild(newRow);
+        
+        document.getElementById('product-search').value = '';
+        document.getElementById('search-results').innerHTML = '';
+        updateGrandTotal();
+    }
+
+    function removeRow(rowId) {
+        document.getElementById(rowId).remove();
+        updateGrandTotal();
+    }
+
+    function updateGrandTotal() {
+        let total = 0;
+        document.querySelectorAll('.subtotal').forEach(sp => {
+            const val = sp.innerText.replace(/[¥,]/g, '');
+            total += parseFloat(val) || 0;
+        });
+        document.getElementById('grand-total').innerText = `¥${new Intl.NumberFormat().format(total)}`;
+    }
+
+    {% if not quotation %}
+    const today = new Date();
+    document.getElementById('issue_date').valueAsDate = today;
+    document.getElementById('expiry_date').valueAsDate = today;
+    {% endif %}
+</script>
+{% endblock %}

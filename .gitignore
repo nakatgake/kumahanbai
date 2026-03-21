@@ -1,0 +1,30 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Database (データベースはローカルのみ / アップロード不要)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.db.tmp
+
+# Backup files
+*.zip
+*.bak
+
+# Temp / test scripts
+test_*.py
+diag_*.py
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

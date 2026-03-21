@@ -1,0 +1,59 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>請求書編集</h2>
+    <a href="/invoices" class="btn" style="background: #ccc;">戻る</a>
+</div>
+
+<div class="card">
+    <form action="/invoices/edit/{{ invoice.id }}" method="post">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 1.5rem;">
+            <div class="form-group">
+                <label>請求番号</label>
+                <input type="text" name="invoice_number" value="{{ invoice.invoice_number }}" required>
+            </div>
+            <div class="form-group">
+                <label>発行日</label>
+                <input type="date" name="issue_date" value="{{ invoice.issue_date.strftime('%Y-%m-%d') if invoice.issue_date else '' }}" required>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>顧客名</label>
+            <input type="text" value="{{ invoice.order.quotation.customer.company }}" disabled>
+        </div>
+
+        <div class="form-group">
+            <label>請求金額 (JPY)</label>
+            <input type="number" name="total_amount" value="{{ invoice.total_amount }}" step="0.01" required>
+        </div>
+
+            <div class="form-group">
+                <label>支払期限</label>
+                <input type="date" name="due_date" value="{{ invoice.due_date.strftime('%Y-%m-%d') }}" required>
+            </div>
+
+        <div class="form-group" style="margin-bottom: 1.5rem;">
+            <label>ステータス</label>
+            <select name="status" class="form-control" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                <option value="未入金" {% if invoice.status.value == '未入金' %}selected{% endif %}>未入金 (未発行)</option>
+                <option value="発行済み" {% if invoice.status.value == '発行済み' %}selected{% endif %}>発行済み</option>
+                <option value="入金済み" {% if invoice.status.value == '入金済み' %}selected{% endif %}>入金済み</option>
+            </select>
+        </div>
+
+
+        <button type="submit" class="btn btn-primary" style="margin-top: 1rem; width: 100%;">更新を保存する</button>
+    </form>
+    {% if invoice %}
+    <div style="margin-top: 3rem; padding: 1.5rem; border: 1px solid #ffcccb; border-radius: 8px; background-color: #fff5f5;">
+        <h3 style="color: #e74c3c; margin-bottom: 1rem; font-size: 1.1rem;">⚠️ 危険な操作</h3>
+        <p style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">この請求データを完全に削除します。売上管理に影響が出る可能性があります。</p>
+        <form hx-post="/invoices/delete/{{ invoice.id }}" hx-confirm="この請求データを削除してもよろしいですか？">
+            <button type="submit" class="btn btn-danger" style="background: #e74c3c; border: none; padding: 0.7rem 1.2rem;">この請求データを削除する</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

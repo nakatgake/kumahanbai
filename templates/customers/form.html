@@ -1,0 +1,59 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>{{ '顧客編集' if customer else '新規顧客登録' }}</h2>
+    <a href="/customers" class="btn" style="background: #ccc;">戻る</a>
+</div>
+
+<div class="card" style="max-width: 600px;">
+    <form action="{{ '/customers/edit/' + (customer.id|string) if customer else '/customers/new' }}" method="post">
+        <div class="form-group">
+            <label>会社名</label>
+            <input type="text" name="company" value="{{ customer.company if customer else '' }}" placeholder="株式会社 〇〇" required>
+        </div>
+        <div class="form-group">
+            <label>担当者名</label>
+            <input type="text" name="name" value="{{ customer.name if customer else '' }}" placeholder="山田 太郎">
+        </div>
+        <div class="form-group">
+            <label>郵便番号</label>
+            <input type="text" name="zip_code" value="{{ customer.zip_code if customer else '' }}" placeholder="123-4567">
+        </div>
+        <div class="form-group">
+            <label>住所</label>
+            <textarea name="address" rows="3" placeholder="東京都...">{{ customer.address if customer else '' }}</textarea>
+        </div>
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" name="email" value="{{ customer.email if customer else '' }}" placeholder="example@test.com">
+        </div>
+        <div class="form-group">
+            <label>電話番号</label>
+            <input type="text" name="phone" value="{{ customer.phone if customer else '' }}" placeholder="03-1234-5678">
+        </div>
+        <div class="form-group">
+            <label>顧客ランク</label>
+            <select name="rank">
+                {% for rank in ranks %}
+                <option value="{{ rank.name }}" {% if customer and customer.rank == rank %}selected{% endif %}>{{ rank.value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>WebサイトURL</label>
+            <input type="url" name="website_url" value="{{ customer.website_url if customer else '' }}" placeholder="https://example.com">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">保存する</button>
+    </form>
+    {% if customer %}
+    <div style="margin-top: 3rem; padding: 1.5rem; border: 1px solid #ffcccb; border-radius: 8px; background-color: #fff5f5;">
+        <h3 style="color: #e74c3c; margin-bottom: 1rem; font-size: 1.1rem;">⚠️ 危険な操作</h3>
+        <p style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">この顧客データを完全に削除します。関連する見積・受注データもすべて削除されます。</p>
+        <form hx-post="/customers/delete/{{ customer.id }}" hx-confirm="この顧客を削除してもよろしいですか？（関連する見積・受注データも削除されます）">
+            <button type="submit" class="btn btn-danger" style="background: #e74c3c; border: none; padding: 0.7rem 1.2rem;">この顧客を削除する</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

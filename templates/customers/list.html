@@ -1,0 +1,47 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="header" style="display: flex; justify-content: space-between; align-items: center;">
+    <h2>顧客管理</h2>
+    <div style="display: flex; gap: 1rem;">
+        <form action="/customers" method="get" style="display: flex; gap: 0.5rem;">
+            <input type="text" name="q" placeholder="会社名・担当者名..." value="{{ search_query or '' }}" style="padding: 0.4rem; border: 1px solid #ddd; border-radius: 4px;">
+            <button type="submit" class="btn btn-sm btn-primary">検索</button>
+        </form>
+        <a href="/customers/excel?q={{ search_query or '' }}" class="btn btn-sm btn-success">Excel出力</a>
+        <a href="/customers/new" class="btn btn-primary">新規顧客登録</a>
+    </div>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>会社名</th>
+                <th>担当者名</th>
+                <th>メールアドレス</th>
+                <th>電話番号</th>
+                <th>登録日</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for customer in customers %}
+            <tr>
+                <td>{{ customer.company }}</td>
+                <td>{{ customer.name }}</td>
+                <td>{{ customer.email }}</td>
+                <td>{{ customer.phone }}</td>
+                <td>
+                    <a href="/customers/edit/{{ customer.id }}" class="btn btn-sm btn-warning">編集</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" style="text-align: center; color: #999;">顧客が登録されていません。</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

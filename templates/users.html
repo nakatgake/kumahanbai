@@ -1,0 +1,79 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h2>ユーザー管理</h2>
+
+<div class="card" style="margin-bottom: 2rem; padding: 2rem;">
+    <h3 style="margin-bottom: 1.5rem;">新しいユーザーを追加</h3>
+    
+    {% if error %}
+    <div style="background: #fff5f5; color: #c53030; padding: 0.8rem; border-radius: 8px; margin-bottom: 1.5rem; border: 1px solid #feb2b2; font-size: 0.9rem;">
+        {{ error }}
+    </div>
+    {% endif %}
+    
+    {% if success %}
+    <div style="background: #f0fff4; color: #276749; padding: 0.8rem; border-radius: 8px; margin-bottom: 1.5rem; border: 1px solid #9ae6b4; font-size: 0.9rem;">
+        {{ success }}
+    </div>
+    {% endif %}
+    
+    <form action="/users/new" method="post">
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1rem; align-items: end;">
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="username">ユーザー名（ログインID）</label>
+                <input type="text" id="username" name="username" required placeholder="例: tanaka">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="full_name">表示名</label>
+                <input type="text" id="full_name" name="full_name" required placeholder="例: 田中太郎">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="password">パスワード</label>
+                <input type="password" id="password" name="password" required placeholder="パスワードを設定">
+            </div>
+            <button type="submit" class="btn btn-primary" style="height: fit-content;">追加</button>
+        </div>
+    </form>
+</div>
+
+<div class="card" style="padding: 2rem;">
+    <h3 style="margin-bottom: 1.5rem;">登録済みユーザー一覧</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>ユーザー名</th>
+                <th>表示名</th>
+                <th>権限</th>
+                <th>作成日</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in users %}
+            <tr>
+                <td>{{ u.username }}</td>
+                <td>{{ u.full_name }}</td>
+                <td>
+                    {% if u.is_admin %}
+                    <span style="background: #ebf8ff; color: #2b6cb0; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.85rem;">管理者</span>
+                    {% else %}
+                    <span style="background: #f7fafc; color: #718096; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.85rem;">一般</span>
+                    {% endif %}
+                </td>
+                <td>{{ u.created_at.strftime('%Y/%m/%d') if u.created_at else '-' }}</td>
+                <td>
+                    {% if not u.is_admin %}
+                    <form hx-post="/users/delete/{{ u.id }}" style="display: inline;">
+                        <button type="submit" class="btn btn-danger" style="padding: 0.3rem 0.8rem; font-size: 0.85rem;">削除 (確認なし)</button>
+                    </form>
+                    {% else %}
+                    <span style="color: #a0aec0; font-size: 0.85rem;">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="header" style="display: flex; justify-content: space-between; align-items: center;">
+    <h2>ダッシュボード</h2>
+    <form action="/" method="get" style="display: flex; align-items: center; gap: 0.5rem;">
+        <span style="font-size: 0.9rem; color: #666;">期間:</span>
+        <input type="date" name="start_date" value="{{ start_date or '' }}" style="padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px;">
+        <span>～</span>
+        <input type="date" name="end_date" value="{{ end_date or '' }}" style="padding: 0.3rem; border: 1px solid #ddd; border-radius: 4px;">
+        <button type="submit" class="btn btn-sm btn-primary">適用</button>
+        <a href="/" class="btn btn-sm btn-secondary" style="text-decoration: none;">クリア</a>
+    </form>
+</div>
+
+<div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem;">
+    <div class="card stat-card">
+        <h3>顧客数</h3>
+        <p style="font-size: 2rem; font-weight: bold; color: var(--accent);">{{ stats.customers }}</p>
+    </div>
+    <div class="card stat-card">
+        <h3>登録商品</h3>
+        <p style="font-size: 2rem; font-weight: bold; color: var(--success);">{{ stats.products }}</p>
+    </div>
+    <div class="card stat-card">
+        <h3>受注数</h3>
+        <p style="font-size: 2rem; font-weight: bold; color: var(--warning);">{{ stats.orders }}</p>
+    </div>
+    <div class="card stat-card">
+        <h3>売上合計</h3>
+        <p style="font-size: 1.8rem; font-weight: bold; color: var(--success);">¥{{ "{:,.0f}".format(stats.total_sales) }}</p>
+        <p style="font-size: 0.85rem; color: #999;">未入金計: ¥{{ "{:,.0f}".format(stats.unpaid_total) }}</p>
+    </div>
+</div>
+
+<div class="card">
+    <h3>クイックアクション</h3>
+    <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+        <a href="/quotations/new" class="btn btn-primary">見積を作成</a>
+        <a href="/customers/new" class="btn btn-success">顧客を追加</a>
+        <a href="/products/new" class="btn btn-success" style="background: var(--dark);">商品を追加</a>
+    </div>
+</div>
+{% endblock %}

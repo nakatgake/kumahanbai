@@ -1,0 +1,38 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>システム設定 - バックアップと復元</h2>
+</div>
+
+<div class="card" style="max-width: 600px; margin: 0 auto;">
+    {% if request.query_params.get('success') == 'restored' %}
+    <div style="background: #d4edda; color: #155724; padding: 1rem; border-radius: 8px; margin-bottom: 2rem; border: 1px solid #c3e6cb;">
+        ✅ データベースの復元が完了しました。最新のデータを確認してください。
+    </div>
+    {% endif %}
+
+    <div style="margin-bottom: 3rem;">
+        <h3>1. バックアップの作成</h3>
+        <p style="color: #666; margin-bottom: 1.5rem;">現在のすべてのデータ（顧客、商品、見積、受注、請求など）をファイルとして保存します。</p>
+        <a href="/backup" class="btn btn-primary" style="display: inline-block;">バックアップファイルをダウンロード</a>
+    </div>
+
+    <hr style="border: none; border-top: 1px solid #eee; margin-bottom: 3rem;">
+
+    <div>
+        <h3>2. バックアップから復元</h3>
+        <p style="color: #e74c3c; font-weight: bold; margin-bottom: 1rem;">⚠️ 注意: 復元を行うと、現在のすべてのデータが上書きされ、元に戻すことはできません。</p>
+        <p style="color: #666; margin-bottom: 1.5rem;">保存済みのバックアップファイル（kumanogo_backup.dbなど）を選択してください。</p>
+        
+        <form action="/restore" method="post" enctype="multipart/form-data">
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <input type="file" name="backup_file" accept=".db" required style="border: 1px solid #ddd; padding: 10px; border-radius: 4px; width: 100%;">
+            </div>
+            <button type="submit" class="btn" style="background: #e67e22; color: white;">
+                このファイルで復元を実行する
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

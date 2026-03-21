@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>kumanomori - 受発注管理システム</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@2.0.0"></script>
+</head>
+<body>
+    <div class="sidebar">
+        <h1>kumanomori</h1>
+        <ul class="nav-links">
+            <li><a href="/" class="{{ 'active' if active_page == 'dashboard' else '' }}">ダッシュボード</a></li>
+            <li><a href="/customers" class="{{ 'active' if active_page == 'customers' else '' }}">顧客管理</a></li>
+            <li><a href="/products" class="{{ 'active' if active_page == 'products' else '' }}">商品台帳・在庫</a></li>
+            <li><a href="/quotations" class="{{ 'active' if active_page == 'quotations' else '' }}">見積管理</a></li>
+            <li><a href="/orders" class="{{ 'active' if active_page == 'orders' else '' }}">受注管理</a></li>
+            <li><a href="/invoices" class="{{ 'active' if active_page == 'invoices' else '' }}">入金・請求書発行</a></li>
+            <li><a href="/settings" class="{{ 'active' if active_page == 'settings' else '' }}">バックアップ・復元</a></li>
+            <li><a href="/users" class="{{ 'active' if active_page == 'users' else '' }}">ユーザー管理</a></li>
+        </ul>
+        <div class="user-info" style="margin-top: auto; padding: 1.5rem; border-top: 1px solid rgba(255,255,255,0.1); font-size: 0.9rem;">
+            <div style="color: #bdc3c7; margin-bottom: 0.5rem;">ログイン中:</div>
+            <div style="font-weight: 600; margin-bottom: 0.5rem;">{{ user.full_name if user else 'ゲスト' }}</div>
+            <a href="/change-password" style="display: block; color: #3498db; text-decoration: none; font-size: 0.85rem; margin-bottom: 1rem;">パスワード変更</a>
+            <a href="/logout" class="btn btn-small" style="width: 100%; text-align: center; display: block; background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid #e74c3c; text-decoration: none;">ログアウト</a>
+        </div>
+    </div>
+    <div class="main-content">
+        {% if message %}
+        <div style="padding: 1rem; margin-bottom: 1rem; border-radius: 8px; background: #e1f5fe; color: #0288d1; border: 1px solid #b3e5fc;">
+            {{ message }}
+        </div>
+        {% endif %}
+        {% if error %}
+        <div style="padding: 1rem; margin-bottom: 1rem; border-radius: 8px; background: #ffebee; color: #c62828; border: 1px solid #ffcdd2;">
+            {{ error }}
+        </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

@@ -1,0 +1,188 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>{{ '受注編集' if order else '新規受注登録 (見積なし)' }}</h2>
+    <a href="/orders" class="btn">戻る</a>
+</div>
+
+<div class="card">
+    <form action="{{ '/orders/edit/' + (order.id|string) if order else '/orders/new' }}" method="post">
+        <div class="form-group">
+            <label>顧客選択</label>
+            <div style="position: relative;">
+                <input type="text" id="customer-search" 
+                       placeholder="顧客名・会社名で検索..." 
+                       value="{{ (order.quotation.customer.company or '') + (' (' + order.quotation.customer.name + ')' if order.quotation.customer.name else '') if order and order.quotation.customer else '' }}"
+                       hx-get="/api/customers/search" 
+                       hx-trigger="keyup changed delay:300ms" 
+                       hx-target="#customer-search-results"
+                       style="width: 100%;">
+                <input type="hidden" name="customer_id" id="selected-customer-id" value="{{ order.quotation.customer_id if order and order.quotation else '' }}" required>
+                <input type="hidden" id="selected-customer-rank" value="{{ order.quotation.customer.rank.name if order and order.quotation and order.quotation.customer else 'RETAIL' }}">
+                <div id="customer-search-results" class="search-results-dropdown"></div>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 1.5rem;">
+            <div class="form-group">
+                <label>受注番号</label>
+                <input type="text" name="order_number" value="{{ order.order_number if order else order_number }}" required>
+            </div>
+            <div class="form-group">
+                <label>受注日</label>
+                <input type="date" name="order_date" value="{{ order.order_date.strftime('%Y-%m-%d') if order else '' }}" required id="order_date">
+            </div>
+        </div>
+
+        <h3 style="margin-bottom: 1rem; margin-top: 2rem;">受注明細</h3>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>品名</th>
+                    <th style="width: 150px;">単価</th>
+                    <th style="width: 100px;">数量</th>
+                    <th style="width: 150px;">小計</th>
+                    <th style="width: 50px;">操作</th>
+                </tr>
+            </thead>
+            <tbody id="line-items">
+                {% if order %}
+                    {% for item in order.quotation.items %}
+                    <tr id="row-{{ loop.index0 }}">
+                        <td>
+                            <input type="hidden" name="product_id[]" value="{{ item.product_id or '' }}">
+                            {% if item.product_id %}
+                                <input type="hidden" name="product_name[]" value="{{ item.description }}">
+                                {{ item.description }}
+                            {% else %}
+                                手入力: <input type="text" name="product_name[]" value="{{ item.description }}" required style="width: 70%; display: inline-block;">
+                            {% endif %}
+                        </td>
+                        <td><input type="number" name="price[]" value="{{ item.unit_price }}" step="0.01" onchange="updateRowSubtotal('row-{{ loop.index0 }}')" required></td>
+                        <td><input type="number" name="quantity[]" value="{{ item.quantity }}" onchange="updateRowSubtotal('row-{{ loop.index0 }}')" required></td>
+                        <td class="subtotal">¥{{ "{:,.0f}".format(item.subtotal) }}</td>
+                        <td><button type="button" class="btn btn-small btn-danger" onclick="removeRow('row-{{ loop.index0 }}')">削除</button></td>
+                    </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+
+        <div style="margin-top: 1rem; display: flex; gap: 1rem;">
+            <div style="position: relative; flex: 1;">
+                <input type="text" id="product-search" 
+                       placeholder="商品台帳から検索して追加..." 
+                       hx-get="/api/products/search" 
+                       hx-trigger="keyup changed delay:300ms" 
+                       hx-target="#search-results">
+                <div id="search-results" class="search-results-dropdown"></div>
+            </div>
+            <button type="button" class="btn" onclick="addManualRow()" style="background: #95a5a6; color: white;">+ 行を手動追加</button>
+        </div>
+
+        <div style="margin-top: 2rem; display: flex; justify-content: flex-end; align-items: center; gap: 2rem;">
+            <div style="font-size: 1.2rem; font-weight: 600;">
+                合計金額: <span id="grand-total">¥{{ "{:,.0f}".format(order.total_amount) if order else '0' }}</span>
+            </div>
+            <button type="submit" class="btn btn-primary">{{ '更新を保存する' if order else '受注を登録する' }}</button>
+        </div>
+    </form>
+    {% if order %}
+    <div style="margin-top: 3rem; padding: 1.5rem; border: 1px solid #ffcccb; border-radius: 8px; background-color: #fff5f5;">
+        <h3 style="color: #e74c3c; margin-bottom: 1rem; font-size: 1.1rem;">⚠️ 危険な操作</h3>
+        <p style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">この受注データを完全に削除します。この操作は取り消せません。</p>
+        <form hx-post="/orders/delete/{{ order.id }}" hx-confirm="この受注データを削除してもよろしいですか？">
+            <button type="submit" class="btn btn-danger" style="background: #e74c3c; border: none; padding: 0.7rem 1.2rem;">この受注を削除する</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+    function updateRowSubtotal(rowId) {
+        const row = document.getElementById(rowId);
+        const price = parseFloat(row.querySelector('input[name="price[]"]').value) || 0;
+        const qty = parseInt(row.querySelector('input[name="quantity[]"]').value) || 0;
+        const subtotal = price * qty;
+        row.querySelector('.subtotal').innerText = `¥${new Intl.NumberFormat().format(subtotal)}`;
+        updateGrandTotal();
+    }
+
+    function selectCustomer(id, name, rank) {
+        document.getElementById('selected-customer-id').value = id;
+        document.getElementById('selected-customer-rank').value = rank;
+        document.getElementById('customer-search').value = name;
+        document.getElementById('customer-search-results').innerHTML = '';
+    }
+
+    function addManualRow() {
+        const tableBody = document.getElementById('line-items');
+        const rowId = 'row-' + Date.now();
+        const newRow = document.createElement('tr');
+        newRow.id = rowId;
+        newRow.innerHTML = `
+            <td>
+                <input type="hidden" name="product_id[]" value="">
+                手入力: <input type="text" name="product_name[]" placeholder="品名を手入力" required style="width: 70%; display: inline-block;">
+            </td>
+            <td><input type="number" name="price[]" value="0" step="0.01" onchange="updateRowSubtotal('${rowId}')" required></td>
+            <td><input type="number" name="quantity[]" value="1" onchange="updateRowSubtotal('${rowId}')" required></td>
+            <td class="subtotal">¥0</td>
+            <td><button type="button" class="btn btn-small btn-danger" onclick="removeRow('${rowId}')">削除</button></td>
+        `;
+        tableBody.appendChild(newRow);
+    }
+
+    function selectProduct(id, name, prices) {
+        const rank = document.getElementById('selected-customer-rank').value || 'RETAIL';
+        let price = prices.retail;
+        if (rank === 'RANK_A') price = prices.a || prices.retail;
+        else if (rank === 'RANK_B') price = prices.b || prices.retail;
+        else if (rank === 'RANK_C') price = prices.c || prices.retail;
+        else if (rank === 'RANK_D') price = prices.d || prices.retail;
+        else if (rank === 'RANK_E') price = prices.e || prices.retail;
+        const tableBody = document.getElementById('line-items');
+        const rowId = 'row-' + id + '-' + Date.now();
+        const newRow = document.createElement('tr');
+        newRow.id = rowId;
+        newRow.innerHTML = `
+            <td>
+                <input type="hidden" name="product_id[]" value="${id}">
+                <input type="hidden" name="product_name[]" value="${name}">
+                ${name}
+            </td>
+            <td><input type="number" name="price[]" value="${price}" step="0.01" onchange="updateRowSubtotal('${rowId}')" required></td>
+            <td><input type="number" name="quantity[]" value="1" onchange="updateRowSubtotal('${rowId}')" required></td>
+            <td class="subtotal">¥${new Intl.NumberFormat().format(price)}</td>
+            <td><button type="button" class="btn btn-small btn-danger" onclick="removeRow('${rowId}')">削除</button></td>
+        `;
+        tableBody.appendChild(newRow);
+        
+        document.getElementById('product-search').value = '';
+        document.getElementById('search-results').innerHTML = '';
+        updateGrandTotal();
+    }
+
+    function removeRow(rowId) {
+        if (typeof rowId === 'string') {
+            document.getElementById(rowId).remove();
+        } else {
+            rowId.closest('tr').remove();
+        }
+        updateGrandTotal();
+    }
+
+    function updateGrandTotal() {
+        let total = 0;
+        document.querySelectorAll('.subtotal').forEach(span => {
+            const val = span.innerText.replace(/[¥,]/g, '');
+            total += parseFloat(val) || 0;
+        });
+        document.getElementById('grand-total').innerText = `¥${new Intl.NumberFormat().format(total)}`;
+    }
+    {% if not order %}
+    document.getElementById('order_date').valueAsDate = new Date();
+    {% endif %}
+</script>
+{% endblock %}

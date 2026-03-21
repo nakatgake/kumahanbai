@@ -1,0 +1,61 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>{{ '商品編集' if product else '新規商品登録' }}</h2>
+    <a href="/products" class="btn" style="background: #ccc;">戻る</a>
+</div>
+
+<div class="card" style="max-width: 600px;">
+    <form action="{{ '/products/edit/' + (product.id|string) if product else '/products/new' }}" method="post">
+        <div class="form-group">
+            <label>商品コード</label>
+            <input type="text" name="code" required value="{{ product.code if product else '' }}" placeholder="PROD-001">
+        </div>
+        <div class="form-group">
+            <label>商品名</label>
+            <input type="text" name="name" required value="{{ product.name if product else '' }}" placeholder="〇〇化学薬品">
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label>単価: 小売り (円)</label>
+                <input type="number" name="price_retail" required value="{{ product.price_retail if product else '' }}" placeholder="1000">
+            </div>
+            <div class="form-group">
+                <label>単価: Aランク (円)</label>
+                <input type="number" name="price_a" required value="{{ product.price_a if product else 0 }}" placeholder="950">
+            </div>
+            <div class="form-group">
+                <label>単価: Bランク (円)</label>
+                <input type="number" name="price_b" required value="{{ product.price_b if product else 0 }}" placeholder="900">
+            </div>
+            <div class="form-group">
+                <label>単価: Cランク (円)</label>
+                <input type="number" name="price_c" required value="{{ product.price_c if product else 0 }}" placeholder="850">
+            </div>
+            <div class="form-group">
+                <label>単価: Dランク (円)</label>
+                <input type="number" name="price_d" required value="{{ product.price_d if product else 0 }}" placeholder="800">
+            </div>
+            <div class="form-group">
+                <label>単価: Eランク (円)</label>
+                <input type="number" name="price_e" required value="{{ product.price_e if product else 0 }}" placeholder="750">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>初期在庫 / 現在庫</label>
+            <input type="number" name="stock_quantity" value="{{ product.stock_quantity if product else 0 }}">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">保存する</button>
+    </form>
+    {% if product %}
+    <div style="margin-top: 3rem; padding: 1.5rem; border: 1px solid #ffcccb; border-radius: 8px; background-color: #fff5f5;">
+        <h3 style="color: #e74c3c; margin-bottom: 1rem; font-size: 1.1rem;">⚠️ 危険な操作</h3>
+        <p style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">この商品データを完全に削除します。すでに見積等で使用されている場合、整合性に影響が出る可能性があります。</p>
+        <form hx-post="/products/delete/{{ product.id }}" hx-confirm="この商品を削除してもよろしいですか？">
+            <button type="submit" class="btn btn-danger" style="background: #e74c3c; border: none; padding: 0.7rem 1.2rem;">この商品を削除する</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

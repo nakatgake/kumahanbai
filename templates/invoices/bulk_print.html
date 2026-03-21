@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>一括請求書印刷</title>
+    <style>
+        @media print {
+            .page-break {
+                page-break-after: always;
+            }
+            .no-print {
+                display: none;
+            }
+        }
+        body {
+            font-family: "msgothic", "MS Gothic", sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 20mm;
+            margin: 10mm auto;
+            background: white;
+            box-shadow: 0 0 5px rgba(0,0,0,0.1);
+            box-sizing: border-box;
+        }
+        @media print {
+            .container {
+                margin: 0;
+                box-shadow: none;
+            }
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+        }
+        .title {
+            font-size: 2rem;
+            font-weight: bold;
+            border-bottom: 3px solid #333;
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        .customer-info p, .company-info p {
+            margin: 0.2rem 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 2rem;
+        }
+        th, td {
+            border: 1px solid #333;
+            padding: 0.5rem;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .total-section {
+            text-align: right;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        .total-box {
+            display: inline-block;
+            border: 2px solid #333;
+            padding: 0.5rem 1rem;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="position: fixed; top: 10px; right: 10px; z-index: 1000; background: rgba(255,255,255,0.9); padding: 10px; border: 1px solid #ccc; border-radius: 5px;">
+        <button onclick="window.print()" style="padding: 10px 20px; cursor: pointer; background: #3498db; color: white; border: none; border-radius: 3px;">🖨️ 画面を印刷する</button>
+        <button onclick="window.location.href='/invoices'" style="padding: 10px 20px; cursor: pointer; margin-left: 10px;">戻る</button>
+    </div>
+
+    {% for invoice in invoices %}
+    <div class="container page-break">
+        <div class="header">
+            <div>
+                <div class="title">請求書</div>
+                <div class="customer-info" style="margin-top: 1rem;">
+                    <p style="font-size: 1.2rem; border-bottom: 1px solid #333; display: inline-block; min-width: 300px;">
+                        {{ invoice.order.quotation.customer.company }} 御中
+                    </p>
+                    <p style="margin-top: 1rem;">下北の通り、ご請求申し上げます。</p>
+                </div>
+            </div>
+            <div class="company-info" style="text-align: right;">
+                <p>請求番号: {{ invoice.invoice_number }}</p>
+                <p>発行日: {{ invoice.issue_date.strftime('%Y年%m月%d日') }}</p>
+                <div style="margin-top: 1.5rem; line-height: 1.6;">
+                    <div style="font-weight: bold; font-size: 1.1rem; margin-bottom: 5px;">kumanomori</div>
+                    代表取締役　岡泰造<br>
+                    〒010-0001 秋田県秋田市中通3-1-9<br>
+                    TEL: 018-838-1920<br>
+                    Mail: info@kumanomorikaken.co.jp<br>
+                    登録番号: T5410001014110
+                </div>
+            </div>
+        </div>
+
+        <div class="total-section">
+            <div class="total-box">
+                請求金額: ¥{{ "{:,.0f}".format(invoice.total_amount) }} (税込)
+            </div>
+            <p style="font-size: 0.9rem; margin-top: 0.5rem;">お支払期限: {{ invoice.due_date.strftime('%Y年%m月%d日') }}</p>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 50%;">品名</th>
+                    <th style="width: 15%;">単価</th>
+                    <th style="width: 10%;">数量</th>
+                    <th style="width: 25%;">金額</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in invoice.order.quotation.items %}
+                <tr>
+                    <td>{{ item.description }}</td>
+                    <td style="text-align: right;">¥{{ "{:,.0f}".format(item.unit_price) }}</td>
+                    <td style="text-align: right;">{{ item.quantity }}</td>
+                    <td style="text-align: right;">¥{{ "{:,.0f}".format(item.subtotal) }}</td>
+                </tr>
+                {% endfor %}
+                <!-- Fill empty rows to make it look standard -->
+                {% for i in range(10 - invoice.order.quotation.items|length) %}
+                <tr>
+                    <td style="height: 1.5rem;">&nbsp;</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div style="display: flex; justify-content: space-between;">
+            <div style="width: 50%;">
+                <p style="font-weight: bold; margin-bottom: 0.5rem;">【振込先情報】</p>
+                <p>○○銀行 ○○支店</p>
+                <p>普通 1234567</p>
+                <p>口座名義: クマノゴカケン クマノタロウ</p>
+            </div>
+            <div style="width: 40%; text-align: right;">
+                <p>小計: ¥{{ "{:,.0f}".format(invoice.total_amount / 1.1) }}</p>
+                <p>消費税(10%): ¥{{ "{:,.0f}".format(invoice.total_amount - (invoice.total_amount / 1.1)) }}</p>
+                <p style="font-weight: bold; font-size: 1.2rem; border-top: 1px solid #333; padding-top: 0.5rem;">合計金額: ¥{{ "{:,.0f}".format(invoice.total_amount) }}</p>
+            </div>
+        </div>
+        
+        <div style="margin-top: 2rem; border: 1px solid #ddd; padding: 1rem; font-size: 0.85rem; color: #666;">
+            備考:
+            <p style="margin: 0.5rem 0;">※振込手数料は貴社にてご負担願います。</p>
+        </div>
+    </div>
+    {% endfor %}
+
+    <script>
+        // Automatic print dialog if needed
+        // window.onload = function() { window.print(); }
+    </script>
+</body>
+</html>
