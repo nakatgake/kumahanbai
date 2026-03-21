@@ -54,7 +54,7 @@
                             <button type="submit" class="btn btn-sm btn-primary" style="background: #27ae60; border-color: #27ae60;">納品</button>
                         </form>
                         {% endif %}
-                        <form action="/orders/delete/{{ order.id }}" method="post" style="display: inline;" onsubmit="return confirm('本当にこの受注データを削除しますか？（在庫数は元に戻ります）')">
+                        <form action="/orders/delete/{{ order.id }}" method="post" onsubmit="return confirm('この受注を削除してもよろしいですか？');" style="display: inline;">
                             <button type="submit" class="btn btn-sm btn-danger">削除</button>
                         </form>
                     </td>
