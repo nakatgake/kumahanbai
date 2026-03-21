@@ -990,7 +990,7 @@ async def convert_to_order(
             product.stock_quantity -= item.quantity
     
     db.commit()
-    return RedirectResponse(url="/orders", status_code=303)
+    return RedirectResponse(url="/quotations", status_code=303)
 
 @app.get("/orders/new", response_class=HTMLResponse)
 async def new_order_form(
