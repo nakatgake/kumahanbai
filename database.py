@@ -4,6 +4,14 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 # Railwayのpersistent volumeパス、またはローカル実行時はカレントディレクトリを使用
 DATA_DIR = os.environ.get("DATA_DIR", ".")
+
+# ディレクトリが存在しない場合は作成する（重要）
+if DATA_DIR != "." and not os.path.exists(DATA_DIR):
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+    except Exception as e:
+        print(f"Error creating directory {DATA_DIR}: {e}")
+
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{DATA_DIR}/kumanogo.db"
 
 engine = create_engine(
