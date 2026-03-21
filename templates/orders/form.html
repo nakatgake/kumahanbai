@@ -94,7 +94,7 @@
     <div style="margin-top: 3rem; padding: 1.5rem; border: 1px solid #ffcccb; border-radius: 8px; background-color: #fff5f5;">
         <h3 style="color: #e74c3c; margin-bottom: 1rem; font-size: 1.1rem;">⚠️ 危険な操作</h3>
         <p style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">この受注データを完全に削除します。この操作は取り消せません。</p>
-        <form hx-post="/orders/delete/{{ order.id }}" hx-confirm="この受注データを削除してもよろしいですか？">
+        <form action="/orders/delete/{{ order.id }}" method="post" onsubmit="return confirm('この受注データを削除してもよろしいですか？');">
             <button type="submit" class="btn btn-danger" style="background: #e74c3c; border: none; padding: 0.7rem 1.2rem;">この受注を削除する</button>
         </form>
     </div>

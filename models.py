@@ -90,7 +90,7 @@ class QuotationItem(Base):
 class Order(Base):
     __tablename__ = "orders"
     id = Column(Integer, primary_key=True, index=True)
-    quotation_id = Column(Integer, ForeignKey("quotations.id"))
+    quotation_id = Column(Integer, ForeignKey("quotations.id", ondelete="CASCADE"))
     order_number = Column(String, unique=True)
     order_date = Column(DateTime, default=datetime.datetime.utcnow)
     total_amount = Column(Float)

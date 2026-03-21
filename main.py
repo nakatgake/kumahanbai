@@ -725,13 +725,21 @@ async def delete_quotation(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
-    quote = db.query(models.Quotation).get(quote_id)
-    if quote:
-        db.delete(quote)
-        db.commit()
-    response = RedirectResponse(url="/quotations", status_code=303)
-    response.headers["HX-Refresh"] = "true"
-    return response
+    try:
+        quote = db.query(models.Quotation).get(quote_id)
+        if quote:
+            if quote.status == models.QuoteStatus.ORDERED:
+                for item in quote.items:
+                    if item.product_id:
+                        product = db.query(models.Product).get(item.product_id)
+                        if product:
+                            product.stock_quantity += item.quantity
+            db.delete(quote)
+            db.commit()
+    except Exception as e:
+        print(f"Error deleting quotation: {e}")
+        db.rollback()
+    return RedirectResponse(url="/quotations", status_code=303)
 
 @app.post("/quotations/{id}/cancel")
 async def cancel_quotation(id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
@@ -1171,19 +1179,21 @@ async def delete_order(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
-    order = db.query(models.Order).get(order_id)
-    if order:
-        if order.quotation:
-            for item in order.quotation.items:
-                if item.product_id:
-                    product = db.query(models.Product).get(item.product_id)
-                    if product:
-                        product.stock_quantity += item.quantity
-        db.delete(order)
-        db.commit()
-    response = RedirectResponse(url="/orders", status_code=303)
-    response.headers["HX-Refresh"] = "true"
-    return response
+    try:
+        order = db.query(models.Order).get(order_id)
+        if order:
+            if order.quotation:
+                for item in order.quotation.items:
+                    if item.product_id:
+                        product = db.query(models.Product).get(item.product_id)
+                        if product:
+                            product.stock_quantity += item.quantity
+            db.delete(order)
+            db.commit()
+    except Exception as e:
+        print(f"Error deleting order: {e}")
+        db.rollback()
+    return RedirectResponse(url="/orders", status_code=303)
 
 @app.post("/orders/{id}/copy")
 async def copy_order(id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
