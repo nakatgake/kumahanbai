@@ -8,175 +8,189 @@
         {% if doc_type == 'delivery_note' %}納品書_{{ doc.order_number }}{% endif %}
         {% if doc_type == 'invoice' %}請求書_{{ doc.invoice_number }}{% endif %}
     </title>
-    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary-text: #222;
-            --border-color: #222;
+            --primary: #1a2a6c;
+            --text-dark: #333;
+            --text-light: #666;
+            --bg-light: #fcfcfc;
+            --border: #ccc;
         }
+        * { box-sizing: border-box; }
         body {
             font-family: 'Noto Sans JP', sans-serif;
-            color: var(--primary-text);
-            background-color: #f0f2f5;
             margin: 0;
             padding: 20px;
+            background-color: #f0f2f5;
             display: flex;
             justify-content: center;
+            color: var(--text-dark);
         }
-        /* A4 Size Settings */
         .page {
             width: 210mm;
             min-height: 297mm;
             background: white;
+            padding: 15mm; /* 20mmから15mmに削減 */
             box-shadow: 0 0 15px rgba(0,0,0,0.1);
-            padding: 25mm 20mm;
-            box-sizing: border-box;
             position: relative;
         }
-        
-        @page {
-            size: A4;
-            margin: 0;
+        @page { 
+            size: A4; 
+            margin: 0; 
         }
-
         @media print {
-            body {
-                background: none;
-                padding: 0;
+            body { background: none; padding: 0; }
+            .page { 
+                box-shadow: none; 
+                margin: 0; 
+                width: 210mm; /* 固定サイズ指定 */
+                min-height: auto;
+                padding: 12mm; /* 印刷時はさらに微調整 */
             }
-            .page {
-                box-shadow: none;
-                margin: 0;
-                width: 100%;
-                height: 100%;
-                padding: 20mm 15mm; 
-            }
-            .print-btn-container {
-                display: none !important;
-            }
+            .print-btn-container { display: none !important; }
         }
 
-        /* --- Header Section --- */
-        .header-title {
-            text-align: center;
-            font-size: 20pt;
-            font-weight: 500;
-            letter-spacing: 0.5em;
-            margin-bottom: 20px;
-        }
-        .doc-info {
-            text-align: right;
-            font-size: 10pt;
-            margin-bottom: 20px;
-            line-height: 1.5;
-        }
-        .header-flex {
+        /* Header Layout */
+        .header {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 30px;
+            margin-bottom: 25px;
+        }
+        .title {
+            font-size: 24pt; /* 26ptから24ptに */
+            font-weight: 700;
+            letter-spacing: 0.3em;
+            color: var(--primary);
+            border-bottom: 3px solid var(--primary);
+            padding-bottom: 2px;
+        }
+        .doc-info {
+            text-align: right;
+            font-size: 9pt; /* 9.5ptから9ptに */
+            line-height: 1.5;
         }
 
-        /* Left: Customer */
-        .customer-block {
-            width: 48%;
+        /* Customer & Issuer Info */
+        .main-flex {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 25px;
+            align-items: flex-start;
         }
-        .customer-name {
-            font-size: 16pt;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 5px;
-            margin-bottom: 15px;
+        .recipient {
+            width: 50%;
         }
-        .total-highlight {
-            font-size: 13pt;
+        .recipient-zip { font-size: 9.5pt; margin-bottom: 3px; }
+        .recipient-name {
+            font-size: 15pt;
             font-weight: 500;
-            text-align: center;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 10px;
-            margin-top: 40px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            margin-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 3px;
         }
-        .payment-info {
-            font-size: 10pt;
-            margin-top: 15px;
-            line-height: 1.6;
-        }
-
-        /* Right: Issuer */
-        .issuer-block {
+        .issuer {
             width: 45%;
             text-align: right;
-            font-size: 10pt;
-            line-height: 1.6;
+            font-size: 9pt;
+            line-height: 1.5;
         }
         .issuer-name {
             font-size: 12pt;
-            font-weight: 500;
-            margin-bottom: 5px;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 3px;
+        }
+        .hanko-space {
+            float: right;
+            width: 50px;
+            height: 50px;
+            border: 1px solid #f0f0f0;
+            margin-top: 5px;
+            color: #ddd;
+            font-size: 7pt;
+            text-align: center;
+            line-height: 50px;
         }
 
-        /* --- Table Section --- */
-        table {
+        /* Grand Total Highlight Box */
+        .grand-total-box {
+            background-color: #f8f9fa;
+            border: 2px solid var(--primary);
+            padding: 10px 18px;
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .total-label { font-size: 10pt; font-weight: 500; }
+        .total-amount { font-size: 20pt; font-weight: 700; color: var(--primary); }
+
+        /* Items Table */
+        table.items-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 10pt;
-            margin-top: 20px;
+            margin-bottom: 12px;
         }
-        th, td {
-            border: 1px solid var(--border-color);
-            padding: 10px;
-            height: 38px;
-        }
-        th {
-            background-color: #f5f5f5;
+        table.items-table th {
+            background-color: var(--primary);
+            color: white;
+            padding: 8px;
+            font-weight: 500;
             text-align: center;
-            font-weight: 500;
+            font-size: 9pt;
+            border: 1px solid var(--primary);
         }
-        .col-no { width: 5%; text-align: center; }
-        .col-desc { width: 35%; }
-        .col-price { width: 20%; text-align: right; white-space: nowrap; }
-        .col-qty { width: 8%; text-align: right; }
-        .col-sub { width: 22%; text-align: right; white-space: nowrap; }
-        td.col-price, td.col-sub, td.col-qty { white-space: nowrap; }
+        table.items-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            font-size: 9pt;
+            height: 35px; /* 38pxから35pxに */
+        }
+        table.items-table tr:nth-child(even) td {
+            background-color: var(--bg-light);
+        }
+        .row-no { width: 35px; text-align: center; color: #888; }
+        .row-desc { width: auto; }
+        .row-price { width: 95px; text-align: right; white-space: nowrap; }
+        .row-qty { width: 55px; text-align: right; }
+        .row-subtotal { width: 105px; text-align: right; font-weight: 500; white-space: nowrap; }
 
-        .tax-summary-row th {
-            text-align: right;
-            border-left: none;
-            background: none;
-            padding-right: 15px;
-            font-weight: normal;
-            font-size: 10pt;
-            color: #444;
-            white-space: nowrap;
+        /* Summary (Subtotal, Tax, Grant Total) */
+        .summary-wrapper {
+            float: right;
+            width: 260px;
+            margin-top: 8px;
         }
-        .tax-summary-row td {
-            text-align: right;
-            font-size: 10pt;
-            color: #444;
-            white-space: nowrap;
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .summary-table td {
+            padding: 5px 8px;
+            font-size: 9pt;
+        }
+        .summary-label { text-align: right; color: var(--text-light); }
+        .summary-value { text-align: right; font-weight: 500; width: 110px; }
+        .summary-grand-label { 
+            text-align: right; 
+            font-weight: 700; 
+            font-size: 12pt; 
+            color: var(--primary);
+            border-top: 2px solid var(--primary);
+            padding-top: 8px;
+        }
+        .summary-grand-value { 
+            text-align: right; 
+            font-weight: 700; 
+            font-size: 12pt; 
+            color: var(--primary);
+            border-top: 2px solid var(--primary);
+            padding-top: 8px;
         }
 
-        .table-total-row th {
-            text-align: right;
-            border-left: none;
-            background: none;
-            padding-right: 15px;
-            font-weight: 500;
-            font-size: 11pt;
-            white-space: nowrap;
-        }
-        .table-total-row td {
-            font-weight: bold;
-            font-size: 12pt;
-            background-color: #f5f5f5;
-            text-align: right;
-            white-space: nowrap;
-        }
-
-        /* --- Print Button --- */
+        /* Print Button Floating */
         .print-btn-container {
             position: fixed;
             bottom: 30px;
@@ -184,167 +198,154 @@
             z-index: 1000;
         }
         .print-btn {
-            background-color: #2196f3;
+            background-color: var(--primary);
             color: white;
             border: none;
-            border-radius: 8px;
-            padding: 15px 30px;
+            border-radius: 50px;
+            padding: 15px 35px;
             font-size: 16px;
             font-weight: bold;
             cursor: pointer;
-            box-shadow: 0 4px 15px rgba(33, 150, 243, 0.4);
-            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: all 0.2s;
             display: flex;
             align-items: center;
             gap: 10px;
         }
         .print-btn:hover {
-            background-color: #1976d2;
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(33, 150, 243, 0.6);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
         }
-        
+
+        .notes {
+            margin-top: 50px;
+            font-size: 9pt;
+            color: var(--text-light);
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+            line-height: 1.6;
+            clear: both;
+        }
     </style>
 </head>
 <body>
 
     <div class="print-btn-container">
         <button class="print-btn" onclick="window.print()">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
             印刷する
         </button>
     </div>
 
     <div class="page">
-        <!-- Title -->
-        <div class="header-title">
-            {% if doc_type == 'quotation' %}御 見 積 書{% endif %}
-            {% if doc_type == 'delivery_note' %}納 品 書{% endif %}
-            {% if doc_type == 'invoice' %}請 求 書{% endif %}
-        </div>
-
-        <!-- Date & No -->
-        <div class="doc-info">
-            {% if doc_type == 'quotation' %}
-                No: {{ doc.quote_number }}<br>
-                発行日: {{ doc.issue_date.strftime('%Y年%m月%d日') }}
-            {% elif doc_type == 'delivery_note' %}
-                受注No: {{ doc.order_number }}<br>
-                発行日: {{ doc.order_date.strftime('%Y年%m月%d日') }}
-            {% elif doc_type == 'invoice' %}
-                No: {{ doc.invoice_number }}<br>
-                発行日: {{ doc.issue_date.strftime('%Y年%m月%d日') }}
-            {% endif %}
-        </div>
-
-        <!-- Customer & Issuer Flex -->
-        <div class="header-flex">
-            <!-- Left: Customer Info -->
-            <div class="customer-block">
-                <div class="customer-info" style="margin-bottom: 20px;">
-                    {% if doc_type == 'invoice' and (doc.order.quotation.customer.zip_code or doc.order.quotation.customer.address) %}
-                    <div style="font-size: 12pt; margin-bottom: 8px;">
-                        {% if doc.order.quotation.customer.zip_code %}〒{{ doc.order.quotation.customer.zip_code }}<br>{% endif %}
-                        {% if doc.order.quotation.customer.address %}{{ doc.order.quotation.customer.address }}{% endif %}
-                    </div>
-                    {% endif %}
-                    <div class="customer-name">
-                        {% if doc_type == 'quotation' %}{{ doc.customer.company }}{% endif %}
-                        {% if doc_type == 'delivery_note' %}{{ doc.quotation.customer.company }}{% endif %}
-                        {% if doc_type == 'invoice' %}{{ doc.order.quotation.customer.company }}{% endif %} 御中
-                    </div>
-                </div>
-                
-                <!-- Highlight Total inside Customer Block (税込合計 displayed) -->
-                <div class="total-highlight">
-                    {% if doc_type == 'quotation' %}
-                        御見積金額（税込）：{{ "¥{:,.0f}".format(doc.total_amount * 1.1) }} 円
-                    {% elif doc_type == 'delivery_note' %}
-                        納品金額（税込）：{{ "¥{:,.0f}".format(doc.total_amount * 1.1) }} 円
-                    {% elif doc_type == 'invoice' %}
-                        御請求金額（税込）：{{ "¥{:,.0f}".format(doc.total_amount * 1.1) }} 円
-                    {% endif %}
-                </div>
-
-                <!-- Payment conditions only for Quote and Invoice -->
+        <div class="header">
+            <div class="title">
+                {% if doc_type == 'quotation' %}御 見 積 書{% endif %}
+                {% if doc_type == 'delivery_note' %}納 品 書{% endif %}
+                {% if doc_type == 'invoice' %}請 求 書{% endif %}
+            </div>
+            <div class="doc-info">
                 {% if doc_type == 'quotation' %}
-                    <div class="payment-info">
-                        {% if doc.payment_due_date %}お支払い期限: {{ doc.payment_due_date.strftime('%Y年%m月%d日') }}<br>{% endif %}
-                        お支払い方法: {{ doc.payment_method }}
-                    </div>
+                    No: {{ doc.quote_number }}<br>
+                    発行日: {{ doc.issue_date.strftime('%Y年%m月%d日') }}<br>
+                    有効期限: {{ doc.expiry_date.strftime('%Y年%m月%d日') if doc.expiry_date else '発行から1ヶ月' }}
+                {% elif doc_type == 'delivery_note' %}
+                    受注No: {{ doc.order_number }}<br>
+                    発行日: {{ doc.order_date.strftime('%Y年%m月%d日') }}
                 {% elif doc_type == 'invoice' %}
-                    <div class="payment-info">
-                        お支払い期限: {{ doc.due_date.strftime('%Y年%m月%d日') }}
-                    </div>
+                    No: {{ doc.invoice_number }}<br>
+                    発行日: {{ doc.issue_date.strftime('%Y年%m月%d日') }}<br>
+                    {% if doc.due_date %}お支払い期限: {{ doc.due_date.strftime('%Y年%m月%d日') }}{% endif %}
                 {% endif %}
             </div>
+        </div>
 
-            <!-- Right: Issuer Info -->
-            <div class="issuer-block">
+        {% set customer = doc.customer if doc_type == 'quotation' else (doc.quotation.customer if doc_type == 'delivery_note' else doc.order.quotation.customer) %}
+        <div class="main-flex">
+            <div class="recipient">
+                <div class="recipient-zip">
+                    {% if customer.zip_code %}〒{{ customer.zip_code }}{% endif %}
+                </div>
+                <div style="font-size: 10pt; margin-bottom: 5px;">
+                    {% if customer.address %}{{ customer.address }}{% endif %}
+                </div>
+                <div class="recipient-name">{{ customer.company }} 御中</div>
+                {% if customer.name %}<div style="font-size: 10pt; color: var(--text-light);">担当：{{ customer.name }} 様</div>{% endif %}
+            </div>
+            <div class="issuer">
                 <div class="issuer-name">kumanomori</div>
                 代表取締役　岡泰造<br>
                 〒010-0001 秋田県秋田市中通3-1-9<br>
                 TEL: 018-838-1920<br>
                 Mail: info@kumanomorikaken.co.jp<br>
                 登録番号: T5410001014110
+                <div class="hanko-space">角印</div>
             </div>
         </div>
 
-        <!-- Items Table -->
-        <table>
+        <div class="grand-total-box">
+            <div class="total-label">
+                {% if doc_type == 'quotation' %}御見積金額（税込）{% elif doc_type == 'delivery_note' %}納品金額（税込）{% else %}御請求金額（税込）{% endif %}
+            </div>
+            <div class="total-amount">{{ "¥{:,.0f}".format(doc.total_amount * 1.1) }}-</div>
+        </div>
+
+        <table class="items-table">
             <thead>
                 <tr>
-                    <th class="col-no">No</th>
-                    <th class="col-desc">品名</th>
-                    <th class="col-price">単価（円）</th>
-                    <th class="col-qty">数量</th>
-                    <th class="col-sub">小計（円）</th>
+                    <th class="row-no">No</th>
+                    <th class="row-desc">品名 / 項目</th>
+                    <th class="row-qty">数量</th>
+                    <th class="row-price">単価（円）</th>
+                    <th class="row-subtotal">金額（円）</th>
                 </tr>
             </thead>
             <tbody>
                 {% set items = doc.items if doc_type == 'quotation' else (doc.quotation.items if doc_type == 'delivery_note' else doc.order.quotation.items) %}
                 
-                <!-- Fill at least 10 rows -->
                 {% for i in range(1, 11) %}
                     <tr>
-                        <td class="col-no">{{ i }}</td>
+                        <td class="row-no">{{ i }}</td>
                         {% if i <= items|length %}
                             {% set item = items[i-1] %}
-                            <td class="col-desc">{{ item.description or (item.product.name if item.product else '') }}</td>
-                            <td class="col-price">{{ "¥{:,.0f}".format(item.unit_price) }}</td>
-                            <td class="col-qty">{{ item.quantity }}</td>
-                            <td class="col-sub">{{ "¥{:,.0f}".format(item.subtotal) }}</td>
+                            <td class="row-desc">{{ item.description or (item.product.name if item.product else '') }}</td>
+                            <td class="row-qty">{{ item.quantity }}</td>
+                            <td class="row-price">{{ "{:,.0f}".format(item.unit_price) }}</td>
+                            <td class="row-subtotal">{{ "{:,.0f}".format(item.subtotal) }}</td>
                         {% else %}
-                            <td class="col-desc"></td>
-                            <td class="col-price"></td>
-                            <td class="col-qty"></td>
-                            <td class="col-sub"></td>
+                            <td class="row-desc"></td>
+                            <td class="row-qty"></td>
+                            <td class="row-price"></td>
+                            <td class="row-subtotal"></td>
                         {% endif %}
                     </tr>
                 {% endfor %}
-                
-                <!-- Subtotal Row (税抜合計) -->
-                <tr class="tax-summary-row">
-                    <th colspan="3"></th>
-                    <th>小計（税抜）</th>
-                    <td>{{ "¥{:,.0f}".format(doc.total_amount) }}</td>
-                </tr>
-
-                <!-- Tax Row (消費税10%) -->
-                <tr class="tax-summary-row">
-                    <th colspan="3"></th>
-                    <th>消費税（10%）</th>
-                    <td>{{ "¥{:,.0f}".format(doc.total_amount * 0.1) }}</td>
-                </tr>
-
-                <!-- Grand Total Row (税込合計) -->
-                <tr class="table-total-row">
-                    <th colspan="3"></th>
-                    <th>合計（税込）</th>
-                    <td>{{ "¥{:,.0f}".format(doc.total_amount * 1.1) }}</td>
-                </tr>
             </tbody>
         </table>
+
+        <div class="summary-wrapper">
+            <table class="summary-table">
+                <tr>
+                    <td class="summary-label">小計（税抜）</td>
+                    <td class="summary-value">{{ "¥{:,.0f}".format(doc.total_amount) }}</td>
+                </tr>
+                <tr>
+                    <td class="summary-label">消費税（10%）</td>
+                    <td class="summary-value">{{ "¥{:,.0f}".format(doc.total_amount * 0.1) }}</td>
+                </tr>
+                <tr>
+                    <td class="summary-grand-label">合計（税込）</td>
+                    <td class="summary-grand-value">{{ "¥{:,.0f}".format(doc.total_amount * 1.1) }}</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="notes">
+            【備考】<br>
+            ・振込手数料はお客様負担にてお願い申し上げます。<br>
+            ・{% if doc_type == 'quotation' %}お支払い方法: {{ doc.payment_method or '銀行振り込み' }}{% else %}上記見積に基づき、ご請求申し上げます。{% endif %}<br>
+            ・上記金額には消費税10%が含まれております。
+        </div>
     </div>
 </body>
 </html>
