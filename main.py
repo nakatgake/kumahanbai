@@ -24,8 +24,21 @@ models.Base.metadata.create_all(bind=engine)
 # Database Migration for Customer Rank and Product Price Tiers
 def migrate_db():
     import sqlite3
-    conn = sqlite3.connect('kumanogo.db')
+    import os
+    
+    # データベースのパスを database.py の設定に合わせる
+    data_dir = os.getenv("DATA_DIR", ".")
+    db_path = os.path.join(data_dir, "kumanogo.db")
+    
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
+    
+    # Check if customers table exists first
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='customers'")
+    if not cursor.fetchone():
+        print("Table 'customers' doesn't exist yet. Skipping migration.")
+        conn.close()
+        return
     
     # Check if customers.rank exists
     cursor.execute("PRAGMA table_info(customers)")
