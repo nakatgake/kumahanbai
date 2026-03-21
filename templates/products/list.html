@@ -14,39 +14,41 @@
 </div>
 
 <div class="card">
-    <table>
-        <thead>
-            <tr>
-                <th>商品コード</th>
-                <th>商品名</th>
-                <th>単価 (円)</th>
-                <th>現在庫数</th>
-                <th>登録日</th>
-                <th>操作</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for product in products %}
-            <tr>
-                <td>{{ product.code }}</td>
-                <td><strong>{{ product.name }}</strong></td>
-                <td>¥{{ "{:,.0f}".format(product.price_retail) }}</td>
-                <td>
-                    <span class="badge {{ 'badge-unpaid' if product.stock_quantity < 5 else 'badge-paid' }}">
-                        {{ product.stock_quantity }}
-                    </span>
-                </td>
-                <td>{{ product.created_at.strftime('%Y/%m/%d') }}</td>
-                <td>
-                    <a href="/products/edit/{{ product.id }}" class="btn btn-sm btn-warning">編集</a>
-                </td>
-            </tr>
-            {% else %}
-            <tr>
-                <td colspan="6" style="text-align: center; color: #999;">商品が登録されていません。</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>商品コード</th>
+                    <th>商品名</th>
+                    <th>単価 (円)</th>
+                    <th>現在庫数</th>
+                    <th>登録日</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for product in products %}
+                <tr>
+                    <td>{{ product.code }}</td>
+                    <td><strong>{{ product.name }}</strong></td>
+                    <td>¥{{ "{:,.0f}".format(product.price_retail) }}</td>
+                    <td>
+                        <span class="badge {{ 'badge-unpaid' if product.stock_quantity < 5 else 'badge-paid' }}">
+                            {{ product.stock_quantity }}
+                        </span>
+                    </td>
+                    <td>{{ product.created_at.strftime('%Y/%m/%d') }}</td>
+                    <td>
+                        <a href="/products/edit/{{ product.id }}" class="btn btn-sm btn-warning">編集</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" style="text-align: center; color: #999;">商品が登録されていません。</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 {% endblock %}

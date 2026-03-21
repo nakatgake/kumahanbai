@@ -14,34 +14,35 @@
 </div>
 
 <div class="card">
-    <table>
-        <thead>
-            <tr>
-                <th>会社名</th>
-                <th>担当者名</th>
-                <th>メールアドレス</th>
-                <th>電話番号</th>
-                <th>登録日</th>
-                <th>操作</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for customer in customers %}
-            <tr>
-                <td>{{ customer.company }}</td>
-                <td>{{ customer.name }}</td>
-                <td>{{ customer.email }}</td>
-                <td>{{ customer.phone }}</td>
-                <td>
-                    <a href="/customers/edit/{{ customer.id }}" class="btn btn-sm btn-warning">編集</a>
-                </td>
-            </tr>
-            {% else %}
-            <tr>
-                <td colspan="6" style="text-align: center; color: #999;">顧客が登録されていません。</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>会社名</th>
+                    <th>担当者名</th>
+                    <th>メールアドレス</th>
+                    <th>電話番号</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for customer in customers %}
+                <tr>
+                    <td>{{ customer.company }}</td>
+                    <td>{{ customer.name }}</td>
+                    <td>{{ customer.email }}</td>
+                    <td>{{ customer.phone }}</td>
+                    <td>
+                        <a href="/customers/edit/{{ customer.id }}" class="btn btn-sm btn-warning">編集</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" style="text-align: center; color: #999;">顧客が登録されていません。</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 {% endblock %}

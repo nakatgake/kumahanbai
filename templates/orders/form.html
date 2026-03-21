@@ -24,7 +24,7 @@
             </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 1.5rem;">
+        <div class="form-grid">
             <div class="form-group">
                 <label>受注番号</label>
                 <input type="text" name="order_number" value="{{ order.order_number if order else order_number }}" required>
@@ -36,38 +36,40 @@
         </div>
 
         <h3 style="margin-bottom: 1rem; margin-top: 2rem;">受注明細</h3>
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>品名</th>
-                    <th style="width: 150px;">単価</th>
-                    <th style="width: 100px;">数量</th>
-                    <th style="width: 150px;">小計</th>
-                    <th style="width: 50px;">操作</th>
-                </tr>
-            </thead>
-            <tbody id="line-items">
-                {% if order %}
-                    {% for item in order.quotation.items %}
-                    <tr id="row-{{ loop.index0 }}">
-                        <td>
-                            <input type="hidden" name="product_id[]" value="{{ item.product_id or '' }}">
-                            {% if item.product_id %}
-                                <input type="hidden" name="product_name[]" value="{{ item.description }}">
-                                {{ item.description }}
-                            {% else %}
-                                手入力: <input type="text" name="product_name[]" value="{{ item.description }}" required style="width: 70%; display: inline-block;">
-                            {% endif %}
-                        </td>
-                        <td><input type="number" name="price[]" value="{{ item.unit_price }}" step="0.01" onchange="updateRowSubtotal('row-{{ loop.index0 }}')" required></td>
-                        <td><input type="number" name="quantity[]" value="{{ item.quantity }}" onchange="updateRowSubtotal('row-{{ loop.index0 }}')" required></td>
-                        <td class="subtotal">¥{{ "{:,.0f}".format(item.subtotal) }}</td>
-                        <td><button type="button" class="btn btn-small btn-danger" onclick="removeRow('row-{{ loop.index0 }}')">削除</button></td>
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>品名</th>
+                        <th style="width: 120px;">単価</th>
+                        <th style="width: 80px;">数量</th>
+                        <th style="width: 120px;">小計</th>
+                        <th style="width: 50px;"></th>
                     </tr>
-                    {% endfor %}
-                {% endif %}
-            </tbody>
-        </table>
+                </thead>
+                <tbody id="line-items">
+                    {% if order %}
+                        {% for item in order.quotation.items %}
+                        <tr id="row-{{ loop.index0 }}">
+                            <td>
+                                <input type="hidden" name="product_id[]" value="{{ item.product_id or '' }}">
+                                {% if item.product_id %}
+                                    <input type="hidden" name="product_name[]" value="{{ item.description }}">
+                                    {{ item.description }}
+                                {% else %}
+                                    <input type="text" name="product_name[]" value="{{ item.description }}" required style="width: 100%;">
+                                {% endif %}
+                            </td>
+                            <td><input type="number" name="price[]" value="{{ item.unit_price }}" step="0.01" onchange="updateRowSubtotal('row-{{ loop.index0 }}')" required></td>
+                            <td><input type="number" name="quantity[]" value="{{ item.quantity }}" onchange="updateRowSubtotal('row-{{ loop.index0 }}')" required></td>
+                            <td class="subtotal">¥{{ "{:,.0f}".format(item.subtotal) }}</td>
+                            <td><button type="button" class="btn btn-sm btn-danger" onclick="removeRow('row-{{ loop.index0 }}')">×</button></td>
+                        </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
 
         <div style="margin-top: 1rem; display: flex; gap: 1rem;">
             <div style="position: relative; flex: 1;">

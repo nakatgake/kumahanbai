@@ -19,50 +19,41 @@
 </div>
 
 <div class="card">
-    <table>
-        <thead>
-            <tr>
-                <th>受注番号</th>
-                <th>顧客名</th>
-                <th>受注日</th>
-                <th>合計金額 (円)</th>
-                <th>操作</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for order in orders %}
-            <tr>
-                <td>{{ order.order_number }}</td>
-                <td>{{ order.quotation.customer.company }}</td>
-                <td>{{ order.order_date.strftime('%Y/%m/%d') }}</td>
-                <td>¥{{ "{:,.0f}".format(order.total_amount) }}</td>
-                <td style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                    <a href="/orders/{{ order.id }}/print_delivery" class="btn btn-sm btn-info" target="_blank">🖨️ 印刷</a>
-                    <a href="/orders/edit/{{ order.id }}" class="btn btn-sm btn-warning">編集</a>
-                    <form action="/orders/{{ order.id }}/copy" method="post" style="display: inline;">
-                        <button type="submit" class="btn btn-sm" style="background: #9b59b6; color: white; border: none;">コピー</button>
-                    </form>
-                    {% if not order.invoice %}
-                    <form action="/orders/{{ order.id }}/invoice" method="post" style="display: inline;">
-                        <button type="submit" class="btn btn-sm btn-primary" style="background: #27ae60; border-color: #27ae60;">納品済</button>
-                    </form>
-                    {% else %}
-                    <div style="display: flex; align-items: center; gap: 0.3rem;">
-                        <button class="btn btn-sm" disabled style="background: #f1f5f9; border: 1px solid #cbd5e0; color: #94a3b8; cursor: not-allowed;">納品済み</button>
-                        <form hx-post="/invoices/delete/{{ order.invoice.id }}" style="display: inline;">
-                            <input type="hidden" name="redirect_to" value="/orders">
-                            <button type="submit" class="btn btn-sm btn-danger" style="padding: 2px 5px; font-size: 0.75rem;">取消</button>
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th>受注番号</th>
+                    <th>顧客名</th>
+                    <th>受注日</th>
+                    <th>合計金額</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                <tr>
+                    <td>{{ order.order_number }}</td>
+                    <td>{{ order.quotation.customer.company }}</td>
+                    <td>{{ order.order_date.strftime('%Y/%m/%d') }}</td>
+                    <td>¥{{ "{:,.0f}".format(order.total_amount) }}</td>
+                    <td style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <a href="/orders/{{ order.id }}/print_delivery" class="btn btn-sm btn-info" target="_blank">🖨️</a>
+                        <a href="/orders/edit/{{ order.id }}" class="btn btn-sm btn-warning">編集</a>
+                        {% if not order.invoice %}
+                        <form action="/orders/{{ order.id }}/invoice" method="post" style="display: inline;">
+                            <button type="submit" class="btn btn-sm btn-primary" style="background: #27ae60;">納品</button>
                         </form>
-                    </div>
-                    {% endif %}
-                </td>
-            </tr>
-            {% else %}
-            <tr>
-                <td colspan="5" style="text-align: center; color: #999;">受注データがありません。</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" style="text-align: center; color: #999;">受注データがありません。</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 {% endblock %}

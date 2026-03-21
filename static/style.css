@@ -184,3 +184,102 @@ input:focus {
 .badge-unpaid { background: #ffeaa7; color: #d35400; border: 1px solid #fab1a0; }
 .badge-paid { background: #55efc4; color: #00b894; border: 1px solid #00b894; }
 .badge-warning { background: #fab1a0; color: #e17055; border: 1px solid #e17055; }
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    body {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        height: auto;
+        position: relative;
+        padding: 1rem;
+    }
+
+    .sidebar h1 {
+        margin-bottom: 1rem;
+        font-size: 1.2rem;
+    }
+
+    .nav-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        justify-content: center;
+    }
+
+    .nav-links li {
+        margin-bottom: 0;
+    }
+
+    .nav-links a {
+        padding: 0.5rem 0.8rem;
+        font-size: 0.85rem;
+    }
+
+    .sidebar .user-info {
+        display: none; /* スマホではユーザ情報を一旦隠す（または別の場所に配置） */
+    }
+
+    .main-content {
+        margin-left: 0;
+        padding: 1rem;
+    }
+
+    .header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* Table Responsiveness */
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin-bottom: 1rem;
+        border-radius: 8px;
+        border: 1px solid #eee;
+    }
+
+    table {
+        min-width: 600px; /* テーブルが潰れないように最小幅を確保 */
+    }
+}
+
+/* User Addition Grid */
+.user-add-grid {
+    display: grid; 
+    grid-template-columns: 1fr 1fr 1fr auto; 
+    gap: 1rem; 
+    align-items: end;
+}
+
+@media (max-width: 768px) {
+    .user-add-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Common Form Grid */
+.form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+@media (max-width: 768px) {
+    .form-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+}
+
+

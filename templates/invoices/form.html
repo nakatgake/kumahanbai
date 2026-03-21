@@ -8,7 +8,7 @@
 
 <div class="card">
     <form action="/invoices/edit/{{ invoice.id }}" method="post">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 1.5rem;">
+        <div class="form-grid">
             <div class="form-group">
                 <label>請求番号</label>
                 <input type="text" name="invoice_number" value="{{ invoice.invoice_number }}" required>

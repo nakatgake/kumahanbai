@@ -27,6 +27,7 @@
             <a href="/logout" class="btn btn-small" style="width: 100%; text-align: center; display: block; background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid #e74c3c; text-decoration: none;">ログアウト</a>
         </div>
     </div>
+    </div>
     <div class="main-content">
         {% if message %}
         <div style="padding: 1rem; margin-bottom: 1rem; border-radius: 8px; background: #e1f5fe; color: #0288d1; border: 1px solid #b3e5fc;">
@@ -38,7 +39,10 @@
             {{ error }}
         </div>
         {% endif %}
-        {% block content %}{% endblock %}
+        <div class="content-body">
+            {% block content %}{% endblock %}
+        </div>
     </div>
 </body>
+
 </html>
