@@ -30,6 +30,9 @@
             .container {
                 margin: 0;
                 box-shadow: none;
+                height: 296mm;
+                padding: 10mm;
+                overflow: hidden;
             }
         }
         .header {
@@ -102,7 +105,7 @@
                 <p>発行日: {{ invoice.issue_date.strftime('%Y年%m月%d日') }}</p>
                 <div style="margin-top: 1.5rem; line-height: 1.6;">
                     <div style="font-weight: bold; font-size: 1.1rem; margin-bottom: 5px;">株式会社熊ノ護化研</div>
-                    代表取締役　岡泰造<br>
+                    代表取締役社長　岡泰造<br>
                     〒010-0001 秋田県秋田市中通3-1-9<br>
                     TEL: 018-838-1920<br>
                     Mail: info@kumanomorikaken.co.jp<br>
@@ -151,9 +154,7 @@
         <div style="display: flex; justify-content: space-between;">
             <div style="width: 50%;">
                 <p style="font-weight: bold; margin-bottom: 0.5rem;">【振込先情報】</p>
-                <p>○○銀行 ○○支店</p>
-                <p>普通 1234567</p>
-                <p>口座名義: クマノゴカケン クマノタロウ</p>
+                <p>普通口座 1090927</p>
             </div>
             <div style="width: 40%; text-align: right;">
                 <p>小計: ¥{{ "{:,.0f}".format(invoice.total_amount / 1.1) }}</p>

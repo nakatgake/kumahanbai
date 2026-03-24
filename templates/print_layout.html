@@ -45,8 +45,10 @@
                 box-shadow: none; 
                 margin: 0; 
                 width: 210mm; /* 固定サイズ指定 */
-                min-height: auto;
-                padding: 12mm; /* 印刷時はさらに微調整 */
+                height: 296mm; /* A4高さを固定してはみ出さないように */
+                box-sizing: border-box;
+                padding: 10mm; /* 余白を削る */
+                overflow: hidden; /* はみ出した分を隠す */
             }
             .print-btn-container { display: none !important; }
         }
@@ -56,7 +58,7 @@
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 25px;
+            margin-bottom: 15px;
         }
         .title {
             font-size: 24pt; /* 26ptから24ptに */
@@ -76,7 +78,7 @@
         .main-flex {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 25px;
+            margin-bottom: 15px;
             align-items: flex-start;
         }
         .recipient {
@@ -118,8 +120,8 @@
         .grand-total-box {
             background-color: #f8f9fa;
             border: 2px solid var(--primary);
-            padding: 10px 18px;
-            margin-bottom: 25px;
+            padding: 8px 18px;
+            margin-bottom: 15px;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -144,9 +146,9 @@
         }
         table.items-table td {
             border: 1px solid #ddd;
-            padding: 8px;
+            padding: 6px 8px; /* 高さを詰める */
             font-size: 9pt;
-            height: 35px; /* 38pxから35pxに */
+            height: 28px; /* 35pxから28pxに下げてはみ出し防止 */
         }
         table.items-table tr:nth-child(even) td {
             background-color: var(--bg-light);
@@ -218,12 +220,12 @@
         }
 
         .notes {
-            margin-top: 50px;
+            margin-top: 15px; /* さらに余白を詰める */
             font-size: 9pt;
             color: var(--text-light);
             border-top: 1px solid #eee;
-            padding-top: 15px;
-            line-height: 1.6;
+            padding-top: 10px;
+            line-height: 1.5;
             clear: both;
         }
     </style>
@@ -274,12 +276,13 @@
             </div>
             <div class="issuer">
                 <div class="issuer-name">株式会社熊ノ護化研</div>
-                代表取締役　岡泰造<br>
+                代表取締役社長　岡泰造<br>
                 〒010-0001 秋田県秋田市中通3-1-9<br>
                 TEL: 018-838-1920<br>
                 Mail: info@kumanomorikaken.co.jp<br>
-                登録番号: T5410001014110
-                <div class="hanko-space">角印</div>
+                登録番号: T5410001014110<br>
+                お振込先: 普通口座 1090927
+                <div class="hanko-space" style="margin-top: -15px;">角印</div>
             </div>
         </div>
 
