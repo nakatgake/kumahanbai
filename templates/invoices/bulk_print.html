@@ -102,7 +102,7 @@
             </div>
             <div class="company-info" style="text-align: right;">
                 <p>請求番号: {{ invoice.invoice_number }}</p>
-                <p>発行日: {{ invoice.issue_date.strftime('%Y年%m月%d日') if invoice.issue_date else '' }}</p>
+                <p>発行日: {% if invoice.issue_date %}{{ invoice.issue_date.strftime('%Y年%m月%d日') }}{% endif %}</p>
                 <div style="margin-top: 1.5rem; line-height: 1.6;">
                     <div style="font-weight: bold; font-size: 1.1rem; margin-bottom: 5px;">株式会社熊ノ護化研</div>
                     代表取締役社長　岡泰造<br>
@@ -118,7 +118,7 @@
             <div class="total-box">
                 請求金額: ¥{{ "{:,.0f}".format(invoice.total_amount) }} (税込)
             </div>
-            <p style="font-size: 0.9rem; margin-top: 0.5rem;">お支払期限: {{ invoice.due_date.strftime('%Y年%m月%d日') if invoice.due_date else '' }}</p>
+            <p style="font-size: 0.9rem; margin-top: 0.5rem;">お支払期限: {% if invoice.due_date %}{{ invoice.due_date.strftime('%Y年%m月%d日') }}{% endif %}</p>
         </div>
 
         <table>
