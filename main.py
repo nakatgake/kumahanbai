@@ -1415,6 +1415,21 @@ async def create_invoice(order_id: int, db: Session = Depends(get_db), user: mod
     db.commit()
     return RedirectResponse(url="/orders", status_code=303)
 
+@app.post("/orders/{order_id}/cancel_shipping")
+async def cancel_shipping(order_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    order = db.query(models.Order).get(order_id)
+    if not order or order.status != models.OrderStatus.SHIPPED:
+        return RedirectResponse(url="/orders", status_code=303)
+    
+    # Delete associated invoice
+    if order.invoice:
+        db.delete(order.invoice)
+    
+    # Revert status to PENDING (未出荷)
+    order.status = models.OrderStatus.PENDING
+    db.commit()
+    return RedirectResponse(url="/orders", status_code=303)
+
 @app.post("/invoices/{invoice_id}/pay")
 async def mark_as_paid(invoice_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
     invoice = db.query(models.Invoice).get(invoice_id)

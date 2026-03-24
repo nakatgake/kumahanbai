@@ -54,6 +54,11 @@
                             <button type="submit" class="btn btn-sm btn-primary" style="background: #27ae60; border-color: #27ae60;">納品</button>
                         </form>
                         {% endif %}
+                        {% if order.status.value == '出荷済み' %}
+                        <form action="/orders/{{ order.id }}/cancel_shipping" method="post" style="display: inline;" onsubmit="return confirm('納品（出荷済み）を取り消して、未出荷に戻しますか？（請求データは削除されます）')">
+                            <button type="submit" class="btn btn-sm btn-danger" style="background: #95a5a6; border-color: #95a5a6;">取消</button>
+                        </form>
+                        {% endif %}
                         <form action="/orders/delete/{{ order.id }}" method="post" onsubmit="return confirm('この受注を削除してもよろしいですか？');" style="display: inline;">
                             <button type="submit" class="btn btn-sm btn-danger">削除</button>
                         </form>
