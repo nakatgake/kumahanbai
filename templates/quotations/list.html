@@ -46,9 +46,6 @@
                     <td style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                         <a href="/quotations/{{ quote.id }}/print" class="btn btn-sm btn-info" title="印刷" target="_blank">🖨️</a>
                         <a href="/quotations/edit/{{ quote.id }}" class="btn btn-sm btn-warning">編集</a>
-                        <form action="/quotations/delete/{{ quote.id }}" method="post" onsubmit="return confirm('この見積を削除してもよろしいですか？');" style="display: inline;">
-                            <button type="submit" class="btn btn-sm btn-danger">削除</button>
-                        </form>
                         <form action="/quotations/{{ quote.id }}/copy" method="post" style="display: inline;">
                             <button type="submit" class="btn btn-sm" style="background: #8e44ad; border: none; color: white;">コピー</button>
                         </form>
@@ -62,6 +59,9 @@
                             <button type="submit" class="btn btn-sm btn-danger" style="background: #95a5a6; border-color: #95a5a6;">取消</button>
                         </form>
                         {% endif %}
+                        <form action="/quotations/delete/{{ quote.id }}" method="post" onsubmit="return confirm('この見積を削除してもよろしいですか？');" style="display: inline;">
+                            <button type="submit" class="btn btn-sm btn-danger">削除</button>
+                        </form>
                     </td>
                 </tr>
                 {% else %}
