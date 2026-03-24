@@ -587,6 +587,7 @@ async def create_quotation(
     payment_method: str = Form("銀行振り込み"),
     discount_rate: float = Form(0.0),
     is_bulk_discount: bool = Form(False),
+    customer_rank: str = Form("RETAIL"),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -638,7 +639,11 @@ async def create_quotation(
         db.add(item)
         total += subtotal
     
-    quotation.total_amount = total * (1 - (discount_rate / 100))
+    final_total_tax_excl = total * (1 - (discount_rate / 100))
+    if customer_rank != "RETAIL" and (final_total_tax_excl * 1.1) < 10000:
+        return HTMLResponse(content="<script>alert('ご注文税込み金額が1万円以下の為、お受けすることができません。'); history.back();</script>", status_code=400)
+
+    quotation.total_amount = final_total_tax_excl
     db.commit()
     return RedirectResponse(url="/quotations", status_code=303)
 
@@ -671,6 +676,7 @@ async def update_quotation(
     payment_method: str = Form(""),
     discount_rate: float = Form(0.0),
     is_bulk_discount: bool = Form(False),
+    customer_rank: str = Form("RETAIL"),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -734,7 +740,11 @@ async def update_quotation(
             if product:
                 product.stock_quantity -= qty
     
-    quotation.total_amount = total * (1 - (discount_rate / 100))
+    final_total_tax_excl = total * (1 - (discount_rate / 100))
+    if customer_rank != "RETAIL" and (final_total_tax_excl * 1.1) < 10000:
+        return HTMLResponse(content="<script>alert('ご注文税込み金額が1万円以下の為、お受けすることができません。'); history.back();</script>", status_code=400)
+
+    quotation.total_amount = final_total_tax_excl
     db.commit()
     return RedirectResponse(url="/quotations", status_code=303)
 
@@ -1036,6 +1046,7 @@ async def create_direct_order(
     order_date: str = Form(...),
     discount_rate: float = Form(0.0),
     is_bulk_discount: bool = Form(False),
+    customer_rank: str = Form("RETAIL"),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -1085,13 +1096,17 @@ async def create_direct_order(
             if product:
                 product.stock_quantity -= qty
     
-    quotation.total_amount = total * (1 - (discount_rate / 100))
+    final_total_tax_excl = total * (1 - (discount_rate / 100))
+    if customer_rank != "RETAIL" and (final_total_tax_excl * 1.1) < 10000:
+        return HTMLResponse(content="<script>alert('ご注文税込み金額が1万円以下の為、お受けすることができません。'); history.back();</script>", status_code=400)
+
+    quotation.total_amount = final_total_tax_excl
     
     order = models.Order(
         quotation_id=quotation.id,
         order_number=order_number,
         order_date=datetime.datetime.strptime(order_date, '%Y-%m-%d'),
-        total_amount=total * (1 - (discount_rate / 100)),
+        total_amount=final_total_tax_excl,
         discount_rate=discount_rate,
         is_bulk_discount=is_bulk_discount,
         status=models.OrderStatus.PENDING
@@ -1126,6 +1141,7 @@ async def update_order(
     order_date: str = Form(...),
     discount_rate: float = Form(0.0),
     is_bulk_discount: bool = Form(False),
+    customer_rank: str = Form("RETAIL"),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -1182,7 +1198,11 @@ async def update_order(
             if product:
                 product.stock_quantity -= qty
     
-    quotation.total_amount = total * (1 - (discount_rate / 100))
+    final_total_tax_excl = total * (1 - (discount_rate / 100))
+    if customer_rank != "RETAIL" and (final_total_tax_excl * 1.1) < 10000:
+        return HTMLResponse(content="<script>alert('ご注文税込み金額が1万円以下の為、お受けすることができません。'); history.back();</script>", status_code=400)
+
+    quotation.total_amount = final_total_tax_excl
     order.total_amount = quotation.total_amount
     order.discount_rate = discount_rate
     order.is_bulk_discount = is_bulk_discount

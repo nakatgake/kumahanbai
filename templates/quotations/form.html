@@ -7,7 +7,7 @@
 </div>
 
 <div class="card">
-    <form action="{{ '/quotations/edit/' + (quotation.id|string) if quotation else '/quotations/new' }}" method="post" id="quote-form" onsubmit="return validateForm()">
+    <form action="{{ '/quotations/edit/' + (quotation.id|string) if quotation else '/quotations/new' }}" method="post" id="quote-form" onsubmit="return validateWholesaleOrder()">
         <div class="form-grid">
             <div class="form-group">
                 <label>顧客を選択</label>
@@ -176,14 +176,65 @@
 
     function updateGrandTotal() {
         let subtotalSum = 0;
-        document.querySelectorAll('.subtotal').forEach(sp => {
-            const val = sp.innerText.replace(/[¥,]/g, '');
-            subtotalSum += parseFloat(val) || 0;
+        let productTotal = 0; // Pre-discount sum of products
+        
+        document.querySelectorAll('#line-items tr').forEach(row => {
+            const descInput = row.querySelector('input[name="product_name[]"]');
+            const subtotalText = row.querySelector('.subtotal').innerText.replace(/[¥,]/g, '');
+            const subtotalVal = parseFloat(subtotalText) || 0;
+            
+            // If it's a shipping fee row, we don't count it towards the "product total" for rules
+            if (descInput && descInput.value === '運賃（自動追加）') {
+                // Skip shipping fee for 30k rule check
+            } else {
+                productTotal += subtotalVal;
+            }
+            subtotalSum += subtotalVal;
         });
 
+        const rank = document.getElementById('selected-customer-rank').value;
         const discountRate = parseFloat(document.getElementById('discount-rate').value) || 0;
         const discountAmount = Math.floor(subtotalSum * (discountRate / 100));
-        const grandTotal = subtotalSum - discountAmount;
+        
+        let finalSubtotal = subtotalSum - discountAmount;
+        const taxInclTotal = finalSubtotal * 1.1;
+
+        // Wholesale Rules (Non-Retail)
+        if (rank !== 'RETAIL') {
+            const shippingRowId = 'row-shipping-fee-auto';
+            const existingShippingRow = document.getElementById(shippingRowId);
+            
+            // Rule: 10k <= Product Total (tax-incl) <= 30k -> Add 1200 shipping
+            // We use productTotal * 1.1 (after discount? User says "ご注文金額", usually means product total)
+            const discountedProductTotalInclTax = (productTotal * (1 - discountRate/100)) * 1.1;
+            
+            if (discountedProductTotalInclTax >= 10000 && discountedProductTotalInclTax <= 30000) {
+                if (!existingShippingRow) {
+                    const tableBody = document.getElementById('line-items');
+                    const newRow = document.createElement('tr');
+                    newRow.id = shippingRowId;
+                    newRow.innerHTML = `
+                        <td>
+                            <input type="hidden" name="product_id[]" value="">
+                            <input type="hidden" name="product_name[]" value="運賃（自動追加）">
+                            <span style="color: #d35400; font-weight: bold;">運賃（自動追加）</span>
+                        </td>
+                        <td><input type="number" name="price[]" value="1200" step="0.01" readonly style="background: #f0f0f0;"></td>
+                        <td><input type="number" name="quantity[]" value="1" readonly style="background: #f0f0f0;"></td>
+                        <td class="subtotal">¥1,200</td>
+                        <td><button type="button" class="btn btn-sm btn-danger" onclick="removeRow('${shippingRowId}')">削除</button></td>
+                    `;
+                    tableBody.appendChild(newRow);
+                    // Recursively update to include shipping in total
+                    return updateGrandTotal();
+                }
+            } else {
+                if (existingShippingRow) {
+                    existingShippingRow.remove();
+                    return updateGrandTotal();
+                }
+            }
+        }
 
         document.getElementById('subtotal-sum-display').innerText = `小計合計: ¥${new Intl.NumberFormat().format(subtotalSum)}`;
         
@@ -195,7 +246,22 @@
             discDisplay.style.display = 'none';
         }
 
-        document.getElementById('grand-total').innerText = `¥${new Intl.NumberFormat().format(grandTotal)}`;
+        document.getElementById('grand-total').innerText = `¥${new Intl.NumberFormat().format(finalSubtotal)}`;
+    }
+
+    function validateWholesaleOrder() {
+        const rank = document.getElementById('selected-customer-rank').value;
+        if (rank === 'RETAIL') return true;
+        
+        const totalText = document.getElementById('grand-total').innerText.replace(/[¥,]/g, '');
+        const totalTaxExcl = parseFloat(totalText) || 0;
+        const totalTaxIncl = totalTaxExcl * 1.1;
+        
+        if (totalTaxIncl < 10000) {
+            alert('ご注文税込み金額が1万円以下の為、お受けすることができません。');
+            return false;
+        }
+        return true;
     }
 
     function toggleBulkDiscount() {
