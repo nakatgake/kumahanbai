@@ -147,7 +147,7 @@ async def dashboard(
         "unpaid_total": q_invoices.filter(models.Invoice.status == models.InvoiceStatus.UNPAID).with_entities(func.sum(models.Invoice.total_amount)).scalar() or 0
     }
 
-    return templates.TemplateResponse("dashboard.html", {
+    return templates.TemplateResponse(request=request, name="dashboard.html", context={
         "request": request,
         "active_page": "dashboard",
         "stats": stats,
@@ -171,7 +171,7 @@ async def list_customers(
             (models.Customer.email.contains(q))
         )
     customers = query.all()
-    return templates.TemplateResponse("customers/list.html", {
+    return templates.TemplateResponse(request=request, name="customers/list.html", context={
         "request": request,
         "active_page": "customers",
         "customers": customers,
@@ -225,7 +225,7 @@ async def new_customer(
     request: Request,
     user: models.User = Depends(get_active_user)
 ):
-    return templates.TemplateResponse("customers/form.html", {
+    return templates.TemplateResponse(request=request, name="customers/form.html", context={
         "request": request, 
         "active_page": "customers",
         "ranks": models.CustomerRank,
@@ -262,7 +262,7 @@ async def edit_customer(
     user: models.User = Depends(get_active_user)
 ):
     customer = db.query(models.Customer).get(customer_id)
-    return templates.TemplateResponse("customers/form.html", {
+    return templates.TemplateResponse(request=request, name="customers/form.html", context={
         "request": request, 
         "active_page": "customers", 
         "customer": customer,
@@ -322,7 +322,7 @@ async def list_products(
             (models.Product.name.contains(q)) | (models.Product.code.contains(q))
         )
     products = query.all()
-    return templates.TemplateResponse("products/list.html", {
+    return templates.TemplateResponse(request=request, name="products/list.html", context={
         "request": request,
         "active_page": "products",
         "products": products,
@@ -375,7 +375,7 @@ async def new_product(
     request: Request,
     user: models.User = Depends(get_active_user)
 ):
-    return templates.TemplateResponse("products/form.html", {
+    return templates.TemplateResponse(request=request, name="products/form.html", context={
         "request": request, 
         "active_page": "products",
         "user": user
@@ -414,7 +414,7 @@ async def edit_product(
     user: models.User = Depends(get_active_user)
 ):
     product = db.query(models.Product).get(product_id)
-    return templates.TemplateResponse("products/form.html", {
+    return templates.TemplateResponse(request=request, name="products/form.html", context={
         "request": request, 
         "active_page": "products", 
         "product": product,
@@ -488,7 +488,7 @@ async def list_quotations(
         query = query.filter(models.Quotation.issue_date < end_dt)
         
     quotations = query.all()
-    return templates.TemplateResponse("quotations/list.html", {
+    return templates.TemplateResponse(request=request, name="quotations/list.html", context={
         "request": request,
         "active_page": "quotations",
         "quotations": quotations,
@@ -558,7 +558,7 @@ async def new_quotation(
     user: models.User = Depends(get_active_user)
 ):
     customers = db.query(models.Customer).all()
-    return templates.TemplateResponse("quotations/form.html", {
+    return templates.TemplateResponse(request=request, name="quotations/form.html", context={
         "request": request,
         "active_page": "quotations",
         "customers": customers,
@@ -636,7 +636,7 @@ async def edit_quotation(
 ):
     quotation = db.query(models.Quotation).get(quote_id)
     customers = db.query(models.Customer).all()
-    return templates.TemplateResponse("quotations/form.html", {
+    return templates.TemplateResponse(request=request, name="quotations/form.html", context={
         "request": request,
         "active_page": "quotations",
         "quotation": quotation,
@@ -820,7 +820,7 @@ async def print_quote(
     if not quote:
         return {"error": "Not found"}
     
-    return templates.TemplateResponse("print_layout.html", {
+    return templates.TemplateResponse(request=request, name="print_layout.html", context={
         "request": request,
         "doc_type": "quotation",
         "doc": quote, "user": user })
@@ -899,7 +899,7 @@ async def list_orders(
         query = query.filter(models.Order.order_date < end_dt)
         
     orders = query.all()
-    return templates.TemplateResponse("orders/list.html", {
+    return templates.TemplateResponse(request=request, name="orders/list.html", context={
         "request": request,
         "active_page": "orders",
         "orders": orders,
@@ -1001,7 +1001,7 @@ async def new_order_form(
     customers = db.query(models.Customer).all()
     # Generate a default order number
     order_number = f"ORD-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
-    return templates.TemplateResponse("orders/form.html", {
+    return templates.TemplateResponse(request=request, name="orders/form.html", context={
         "request": request,
         "active_page": "orders",
         "customers": customers,
@@ -1084,7 +1084,7 @@ async def edit_order(
 ):
     order = db.query(models.Order).get(order_id)
     customers = db.query(models.Customer).all()
-    return templates.TemplateResponse("orders/form.html", {
+    return templates.TemplateResponse(request=request, name="orders/form.html", context={
         "request": request,
         "active_page": "orders",
         "order": order,
@@ -1250,7 +1250,7 @@ async def print_delivery_note(
     if not order:
         return {"error": "Not found"}
     
-    return templates.TemplateResponse("print_layout.html", {
+    return templates.TemplateResponse(request=request, name="print_layout.html", context={
         "request": request,
         "doc_type": "delivery_note",
         "doc": order, "user": user })
@@ -1278,7 +1278,7 @@ async def list_invoices(
         query = query.filter(models.Invoice.issue_date < end_dt)
         
     invoices = query.all()
-    return templates.TemplateResponse("invoices/list.html", {
+    return templates.TemplateResponse(request=request, name="invoices/list.html", context={
         "request": request,
         "active_page": "invoices",
         "invoices": invoices,
@@ -1428,7 +1428,7 @@ async def bulk_print_invoices(request: Request, db: Session = Depends(get_db), u
         inv.status = models.InvoiceStatus.ISSUED
     db.commit()
     
-    return templates.TemplateResponse("invoices/bulk_print.html", {
+    return templates.TemplateResponse(request=request, name="invoices/bulk_print.html", context={
         "request": request,
         "invoices": invoices,
         "user": user
@@ -1437,7 +1437,7 @@ async def bulk_print_invoices(request: Request, db: Session = Depends(get_db), u
 @app.get("/invoices/edit/{invoice_id}", response_class=HTMLResponse)
 async def edit_invoice(invoice_id: int, request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
     invoice = db.query(models.Invoice).get(invoice_id)
-    return templates.TemplateResponse("invoices/form.html", {
+    return templates.TemplateResponse(request=request, name="invoices/form.html", context={
         "request": request,
         "active_page": "invoices",
         "invoice": invoice, "user": user })
@@ -1488,7 +1488,7 @@ async def print_invoice(request: Request, invoice_id: int, db: Session = Depends
     if not invoice:
         return {"error": "Not found"}
     
-    return templates.TemplateResponse("print_layout.html", {
+    return templates.TemplateResponse(request=request, name="print_layout.html", context={
         "request": request,
         "doc_type": "invoice",
         "doc": invoice, "user": user })
@@ -1526,7 +1526,7 @@ async def search_customers(q: str = "", db: Session = Depends(get_db), user: mod
 # Settings / Backup & Restore
 @app.get("/settings")
 async def settings_page(request: Request, user: models.User = Depends(get_active_user)):
-    return templates.TemplateResponse("settings.html", {"request": request, "active_page": "settings", "user": user })
+    return templates.TemplateResponse(request=request, name="settings.html", context={"request": request, "active_page": "settings", "user": user })
 
 @app.get("/backup")
 async def download_backup(user: models.User = Depends(get_active_user)):
@@ -1555,7 +1555,7 @@ async def restore_backup(backup_file: UploadFile = File(...), user: models.User 
 # --- Auth Routes ---
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request })
+    return templates.TemplateResponse(request=request, name="login.html", context={"request": request })
 
 @app.post("/login")
 async def login(
@@ -1566,7 +1566,7 @@ async def login(
 ):
     user = db.query(models.User).filter(models.User.username == username).first()
     if not user or not verify_password(password, user.hashed_password):
-        return templates.TemplateResponse("login.html", {
+        return templates.TemplateResponse(request=request, name="login.html", context={
             "request": request,
             "error": "ユーザー名またはパスワードが正しくありません"
         })
@@ -1590,7 +1590,7 @@ async def list_users(
     user: models.User = Depends(get_active_user)
 ):
     users = db.query(models.User).all()
-    return templates.TemplateResponse("users.html", {
+    return templates.TemplateResponse(request=request, name="users.html", context={
         "request": request, 
         "active_page": "users", 
         "users": users, 
@@ -1610,7 +1610,7 @@ async def create_user(
     existing = db.query(models.User).filter(models.User.username == username).first()
     if existing:
         users = db.query(models.User).all()
-        return templates.TemplateResponse("users.html", {
+        return templates.TemplateResponse(request=request, name="users.html", context={
             "request": request,
             "active_page": "users",
             "users": users,
@@ -1647,7 +1647,7 @@ async def change_password_page(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
-    return templates.TemplateResponse("change_password.html", {
+    return templates.TemplateResponse(request=request, name="change_password.html", context={
         "request": request,
         "active_page": "change_password",
         "user": user
@@ -1663,7 +1663,7 @@ async def change_password(
     user: models.User = Depends(get_active_user)
 ):
     if not verify_password(current_password, user.hashed_password):
-        return templates.TemplateResponse("change_password.html", {
+        return templates.TemplateResponse(request=request, name="change_password.html", context={
             "request": request,
             "active_page": "change_password",
             "user": user,
@@ -1671,7 +1671,7 @@ async def change_password(
         })
     
     if new_password != confirm_password:
-        return templates.TemplateResponse("change_password.html", {
+        return templates.TemplateResponse(request=request, name="change_password.html", context={
             "request": request,
             "active_page": "change_password",
             "user": user,
@@ -1681,7 +1681,7 @@ async def change_password(
     user.hashed_password = get_password_hash(new_password)
     db.commit()
     
-    return templates.TemplateResponse("change_password.html", {
+    return templates.TemplateResponse(request=request, name="change_password.html", context={
         "request": request,
         "active_page": "change_password",
         "user": user,
