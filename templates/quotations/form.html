@@ -351,10 +351,21 @@
         updateGrandTotal();
     }
 
+    function updateExpiryDate() {
+        const issueDateVal = document.getElementById('issue_date').value;
+        if (issueDateVal) {
+            const date = new Date(issueDateVal);
+            date.setMonth(date.getMonth() + 6);
+            document.getElementById('expiry_date').valueAsDate = date;
+        }
+    }
+
+    document.getElementById('issue_date').addEventListener('change', updateExpiryDate);
+
     {% if not quotation %}
     const today = new Date();
     document.getElementById('issue_date').valueAsDate = today;
-    document.getElementById('expiry_date').valueAsDate = today;
+    updateExpiryDate();
     {% endif %}
 </script>
 {% endblock %}
