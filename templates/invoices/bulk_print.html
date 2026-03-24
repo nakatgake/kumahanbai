@@ -151,17 +151,16 @@
             </tbody>
         </table>
 
-        <div style="display: flex; justify-content: space-between;">
-            <div style="width: 50%;">
-                <p style="font-weight: bold; margin-bottom: 0.5rem;">【お振込先】</p>
-                <p>秋田銀行　駅前支店</p>
-                <p>普通口座 1090927</p>
-                <p>株式会社熊ノ護化研</p>
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 15px; border-top: 1px solid #ddd; padding-top: 10px;">
+            <div style="width: 60%; font-size: 9.5pt; line-height: 1.6;">
+                <span style="font-weight: bold; border-bottom: 2px solid #333; margin-bottom: 5px; display: inline-block;">【お振込先】</span><br>
+                秋田銀行　駅前支店　普通口座 1090927<br>
+                株式会社熊ノ護化研　代表取締役社長　岡泰造
             </div>
-            <div style="width: 40%; text-align: right;">
-                <p>小計: ¥{{ "{:,.0f}".format(invoice.total_amount / 1.1) }}</p>
-                <p>消費税(10%): ¥{{ "{:,.0f}".format(invoice.total_amount - (invoice.total_amount / 1.1)) }}</p>
-                <p style="font-weight: bold; font-size: 1.2rem; border-top: 1px solid #333; padding-top: 0.5rem;">合計金額: ¥{{ "{:,.0f}".format(invoice.total_amount) }}</p>
+            <div style="width: 35%; text-align: right;">
+                <p style="font-size: 9pt; margin-bottom: 2px;">小計: ¥{{ "{:,.0f}".format(invoice.total_amount / 1.1) }}</p>
+                <p style="font-size: 9pt; margin-bottom: 4px;">消費税(10%): ¥{{ "{:,.0f}".format(invoice.total_amount - (invoice.total_amount / 1.1)) }}</p>
+                <p style="font-weight: bold; font-size: 1.25rem; border-top: 2px solid #333; padding-top: 4px; color: #1a2a6c;">合計金額: ¥{{ "{:,.0f}".format(invoice.total_amount) }}</p>
             </div>
         </div>
         
