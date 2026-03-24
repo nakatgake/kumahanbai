@@ -181,7 +181,7 @@ async def list_customers(
             (models.Customer.company.contains(q)) |
             (models.Customer.email.contains(q))
         )
-    customers = query.all()
+    customers = query.order_by(models.Customer.id.desc()).all()
     return templates.TemplateResponse(request=request, name="customers/list.html", context={
         "request": request,
         "active_page": "customers",
@@ -200,7 +200,7 @@ async def export_customers_excel(
     query = db.query(models.Customer)
     if q:
         query = query.filter((models.Customer.company.contains(q)) | (models.Customer.name.contains(q)))
-    customers = query.all()
+    customers = query.order_by(models.Customer.id.desc()).all()
     
     output = io.BytesIO()
     workbook = xlsxwriter.Workbook(output)
@@ -332,7 +332,7 @@ async def list_products(
         query = query.filter(
             (models.Product.name.contains(q)) | (models.Product.code.contains(q))
         )
-    products = query.all()
+    products = query.order_by(models.Product.id.desc()).all()
     return templates.TemplateResponse(request=request, name="products/list.html", context={
         "request": request,
         "active_page": "products",
@@ -350,7 +350,7 @@ async def export_products_excel(
     query = db.query(models.Product)
     if q:
         query = query.filter((models.Product.name.contains(q)) | (models.Product.code.contains(q)))
-    products = query.all()
+    products = query.order_by(models.Product.id.desc()).all()
     
     output = io.BytesIO()
     workbook = xlsxwriter.Workbook(output)
@@ -498,7 +498,7 @@ async def list_quotations(
         end_dt = datetime.datetime.strptime(end_date, '%Y-%m-%d') + datetime.timedelta(days=1)
         query = query.filter(models.Quotation.issue_date < end_dt)
         
-    quotations = query.all()
+    quotations = query.order_by(models.Quotation.id.desc()).all()
     return templates.TemplateResponse(request=request, name="quotations/list.html", context={
         "request": request,
         "active_page": "quotations",
@@ -529,7 +529,7 @@ async def export_quotations_excel(
         end_dt = datetime.datetime.strptime(end_date, '%Y-%m-%d') + datetime.timedelta(days=1)
         query = query.filter(models.Quotation.issue_date < end_dt)
     
-    quotations = query.all()
+    quotations = query.order_by(models.Quotation.id.desc()).all()
     
     output = io.BytesIO()
     workbook = xlsxwriter.Workbook(output)
@@ -568,7 +568,7 @@ async def new_quotation(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
-    customers = db.query(models.Customer).all()
+    customers = db.query(models.Customer).order_by(models.Customer.id.desc()).all()
     return templates.TemplateResponse(request=request, name="quotations/form.html", context={
         "request": request,
         "active_page": "quotations",
@@ -655,7 +655,7 @@ async def edit_quotation(
     user: models.User = Depends(get_active_user)
 ):
     quotation = db.query(models.Quotation).get(quote_id)
-    customers = db.query(models.Customer).all()
+    customers = db.query(models.Customer).order_by(models.Customer.id.desc()).all()
     return templates.TemplateResponse(request=request, name="quotations/form.html", context={
         "request": request,
         "active_page": "quotations",
@@ -927,7 +927,7 @@ async def list_orders(
         end_dt = datetime.datetime.strptime(end_date, '%Y-%m-%d') + datetime.timedelta(days=1)
         query = query.filter(models.Order.order_date < end_dt)
         
-    orders = query.all()
+    orders = query.order_by(models.Order.id.desc()).all()
     return templates.TemplateResponse(request=request, name="orders/list.html", context={
         "request": request,
         "active_page": "orders",
@@ -958,7 +958,7 @@ async def export_orders_excel(
         end_dt = datetime.datetime.strptime(end_date, '%Y-%m-%d') + datetime.timedelta(days=1)
         query = query.filter(models.Order.order_date < end_dt)
         
-    orders = query.all()
+    orders = query.order_by(models.Order.id.desc()).all()
     
     output = io.BytesIO()
     workbook = xlsxwriter.Workbook(output)
@@ -1027,7 +1027,7 @@ async def new_order_form(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
-    customers = db.query(models.Customer).all()
+    customers = db.query(models.Customer).order_by(models.Customer.id.desc()).all()
     # Generate a default order number
     order_number = f"ORD-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
     return templates.TemplateResponse(request=request, name="orders/form.html", context={
@@ -1123,7 +1123,7 @@ async def edit_order(
     user: models.User = Depends(get_active_user)
 ):
     order = db.query(models.Order).get(order_id)
-    customers = db.query(models.Customer).all()
+    customers = db.query(models.Customer).order_by(models.Customer.id.desc()).all()
     return templates.TemplateResponse(request=request, name="orders/form.html", context={
         "request": request,
         "active_page": "orders",
@@ -1328,7 +1328,7 @@ async def list_invoices(
         end_dt = datetime.datetime.strptime(end_date, '%Y-%m-%d') + datetime.timedelta(days=1)
         query = query.filter(models.Invoice.issue_date < end_dt)
         
-    invoices = query.all()
+    invoices = query.order_by(models.Invoice.id.desc()).all()
     return templates.TemplateResponse(request=request, name="invoices/list.html", context={
         "request": request,
         "active_page": "invoices",
@@ -1360,7 +1360,7 @@ async def export_invoices_excel(
         end_dt = datetime.datetime.strptime(end_date, '%Y-%m-%d') + datetime.timedelta(days=1)
         query = query.filter(models.Invoice.issue_date < end_dt)
         
-    invoices = query.all()
+    invoices = query.order_by(models.Invoice.id.desc()).all()
     
     output = io.BytesIO()
     workbook = xlsxwriter.Workbook(output)
@@ -1564,7 +1564,7 @@ async def print_invoice(request: Request, invoice_id: int, db: Session = Depends
 async def search_products(q: str = "", db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
     products = db.query(models.Product).filter(
         (models.Product.name.contains(q)) | (models.Product.code.contains(q))
-    ).limit(10).all()
+    ).order_by(models.Product.id.desc()).limit(10).all()
     # Simple HTML response for HTMX
     html = ""
     for p in products:
@@ -1580,7 +1580,7 @@ async def search_products(q: str = "", db: Session = Depends(get_db), user: mode
 async def search_customers(q: str = "", db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
     customers = db.query(models.Customer).filter(
         (models.Customer.name.contains(q)) | (models.Customer.company.contains(q))
-    ).limit(10).all()
+    ).order_by(models.Customer.id.desc()).limit(10).all()
     html = ""
     for c in customers:
         rank_name = c.rank.name if c.rank else 'RETAIL'
@@ -1655,7 +1655,7 @@ async def list_users(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
-    users = db.query(models.User).all()
+    users = db.query(models.User).order_by(models.User.id.desc()).all()
     return templates.TemplateResponse(request=request, name="users.html", context={
         "request": request, 
         "active_page": "users", 
@@ -1675,7 +1675,7 @@ async def create_user(
     # Check if username already exists
     existing = db.query(models.User).filter(models.User.username == username).first()
     if existing:
-        users = db.query(models.User).all()
+        users = db.query(models.User).order_by(models.User.id.desc()).all()
         return templates.TemplateResponse(request=request, name="users.html", context={
             "request": request,
             "active_page": "users",
