@@ -62,9 +62,6 @@
                             <button type="submit" class="btn btn-sm btn-danger" style="background: #95a5a6; border-color: #95a5a6;">取消</button>
                         </form>
                         {% endif %}
-                        <form action="/quotations/delete/{{ quote.id }}" method="post" style="display: inline;" onsubmit="return confirm('本当にこの見積を削除しますか？')">
-                            <button type="submit" class="btn btn-sm btn-danger">削除</button>
-                        </form>
                     </td>
                 </tr>
                 {% else %}
