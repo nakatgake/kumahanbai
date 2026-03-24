@@ -116,7 +116,7 @@
 
         <div class="total-section">
             <div class="total-box">
-                請求金額: ¥{{ "{:,.0f}".format(invoice.total_amount) }} (税込)
+                請求金額: ¥{{ "{:,.0f}".format(invoice.total_amount * 1.1) }} (税込)
             </div>
             <p style="font-size: 0.9rem; margin-top: 0.5rem;">お支払期限: {% if invoice.due_date %}{{ invoice.due_date.strftime('%Y年%m月%d日') }}{% endif %}</p>
         </div>
@@ -158,9 +158,13 @@
                 株式会社熊ノ護化研　代表取締役社長　岡泰造
             </div>
             <div style="width: 35%; text-align: right;">
-                <p style="font-size: 9pt; margin-bottom: 2px;">小計: ¥{{ "{:,.0f}".format(invoice.total_amount / 1.1) }}</p>
-                <p style="font-size: 9pt; margin-bottom: 4px;">消費税(10%): ¥{{ "{:,.0f}".format(invoice.total_amount - (invoice.total_amount / 1.1)) }}</p>
-                <p style="font-weight: bold; font-size: 1.25rem; border-top: 2px solid #333; padding-top: 4px; color: #1a2a6c;">合計金額: ¥{{ "{:,.0f}".format(invoice.total_amount) }}</p>
+                {% set original_subtotal = invoice.order.quotation.items|sum(attribute='subtotal') %}
+                <p style="font-size: 9pt; margin-bottom: 2px;">小計: ¥{{ "{:,.0f}".format(original_subtotal) }}</p>
+                {% if invoice.order.discount_rate > 0 %}
+                <p style="font-size: 9pt; margin-bottom: 2px; color: #e74c3c;">値引き ({{ invoice.order.discount_rate }}%): -¥{{ "{:,.0f}".format(original_subtotal - invoice.total_amount) }}</p>
+                {% endif %}
+                <p style="font-size: 9pt; margin-bottom: 4px;">消費税(10%): ¥{{ "{:,.0f}".format(invoice.total_amount * 0.1) }}</p>
+                <p style="font-weight: bold; font-size: 1.25rem; border-top: 2px solid #333; padding-top: 4px; color: #1a2a6c;">合計金額: ¥{{ "{:,.0f}".format(invoice.total_amount * 1.1) }}</p>
             </div>
         </div>
         

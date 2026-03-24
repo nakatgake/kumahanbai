@@ -26,6 +26,17 @@
 
         <div class="form-grid">
             <div class="form-group">
+                <label>顧客ランク</label>
+                <select name="customer_rank" id="selected-customer-rank" onchange="changeRank()" class="form-control" style="width: 100%; height: 38px; border: 1px solid #ccc; border-radius: 4px; padding: 0.5rem;">
+                    <option value="RETAIL" {{ 'selected' if not (order and order.quotation.customer) or (order and order.quotation.customer.rank.name == 'RETAIL') else '' }}>小売り</option>
+                    <option value="RANK_A" {{ 'selected' if order and order.quotation.customer.rank.name == 'RANK_A' else '' }}>Aランク</option>
+                    <option value="RANK_B" {{ 'selected' if order and order.quotation.customer.rank.name == 'RANK_B' else '' }}>Bランク</option>
+                    <option value="RANK_C" {{ 'selected' if order and order.quotation.customer.rank.name == 'RANK_C' else '' }}>Cランク</option>
+                    <option value="RANK_D" {{ 'selected' if order and order.quotation.customer.rank.name == 'RANK_D' else '' }}>Dランク</option>
+                    <option value="RANK_E" {{ 'selected' if order and order.quotation.customer.rank.name == 'RANK_E' else '' }}>Eランク</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label>受注番号</label>
                 <input type="text" name="order_number" value="{{ order.order_number if order else order_number }}" required>
             </div>
@@ -60,7 +71,12 @@
                                     <input type="text" name="product_name[]" value="{{ item.description }}" required style="width: 100%;">
                                 {% endif %}
                             </td>
-                            <td><input type="number" name="price[]" value="{{ item.unit_price }}" step="0.01" onchange="updateRowSubtotal('row-{{ loop.index0 }}')" required></td>
+                            <td>
+                                <input type="number" name="price[]" value="{{ item.unit_price }}" step="0.01" onchange="updateRowSubtotal('row-{{ loop.index0 }}')" required
+                                       {% if item.product %}
+                                       data-prices='{"retail": {{ item.product.price_retail }}, "a": {{ item.product.price_a }}, "b": {{ item.product.price_b }}, "c": {{ item.product.price_c }}, "d": {{ item.product.price_d }}, "e": {{ item.product.price_e }}}'
+                                       {% endif %}>
+                            </td>
                             <td><input type="number" name="quantity[]" value="{{ item.quantity }}" onchange="updateRowSubtotal('row-{{ loop.index0 }}')" required></td>
                             <td class="subtotal">¥{{ "{:,.0f}".format(item.subtotal) }}</td>
                             <td><button type="button" class="btn btn-sm btn-danger" onclick="removeRow('row-{{ loop.index0 }}')">削除</button></td>
@@ -83,11 +99,29 @@
             <button type="button" class="btn" onclick="addManualRow()" style="background: #95a5a6; color: white;">+ 行を手動追加</button>
         </div>
 
-        <div style="margin-top: 2rem; display: flex; justify-content: flex-end; align-items: center; gap: 2rem;">
-            <div style="font-size: 1.2rem; font-weight: 600;">
-                合計金額: <span id="grand-total">¥{{ "{:,.0f}".format(order.total_amount) if order else '0' }}</span>
+        <div style="display: flex; flex-direction: column; align-items: flex-end; margin-top: 1.5rem; gap: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 1rem; background: #f9f9f9; padding: 0.8rem 1.2rem; border-radius: 8px; border: 1px solid #eee;">
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-bottom: 0;">
+                    <input type="checkbox" name="is_bulk_discount" id="is-bulk-discount" onchange="toggleBulkDiscount()" {{ 'checked' if order and order.is_bulk_discount else '' }}>
+                    <span style="font-size: 0.95rem; font-weight: bold; color: #d35400;">大量購入値引き (小売5%)</span>
+                </label>
+                <div style="display: flex; align-items: center; gap: 0.3rem;">
+                    <span style="font-size: 0.9rem; color: #666;">値引率:</span>
+                    <input type="number" name="discount_rate" id="discount-rate" value="{{ order.discount_rate if order else '0' }}" step="0.1" style="width: 70px; padding: 0.3rem;" onchange="updateGrandTotal()">
+                    <span style="font-size: 0.9rem;">%</span>
+                </div>
             </div>
-            <button type="submit" class="btn btn-primary">{{ '更新を保存する' if order else '受注を登録する' }}</button>
+            
+            <div style="font-size: 1.1rem; color: #666;" id="subtotal-sum-display">
+                小計合計: ¥{{ "{:,.0f}".format(order.quotation.items|sum(attribute='subtotal')) if order else '0' }}
+            </div>
+            <div style="font-size: 1.1rem; color: #e74c3c; display: {{ 'block' if order and order.discount_rate > 0 else 'none' }};" id="discount-amount-display">
+                値引き: -¥0
+            </div>
+            <div style="font-size: 1.4rem; font-weight: bold; border-top: 2px solid #333; padding-top: 0.5rem; margin-top: 0.5rem; display: flex; align-items: center; gap: 2rem;">
+                <div>最終合計金額: <span id="grand-total">¥{{ "{:,.0f}".format(order.total_amount) if order else '0' }}</span></div>
+                <button type="submit" class="btn btn-primary">{{ '更新を保存する' if order else '受注を登録する' }}</button>
+            </div>
         </div>
     </form>
     {% if order %}
@@ -121,39 +155,86 @@
         updateGrandTotal();
     }
 
-    function selectCustomer(id, name, rank) {
-        document.getElementById('selected-customer-id').value = id;
-        document.getElementById('selected-customer-rank').value = rank;
-        document.getElementById('customer-search').value = name;
-        document.getElementById('customer-search-results').innerHTML = '';
+    function updateGrandTotal() {
+        let subtotalSum = 0;
+        document.querySelectorAll('.subtotal').forEach(span => {
+            const val = span.innerText.replace(/[¥,]/g, '');
+            subtotalSum += parseFloat(val) || 0;
+        });
+
+        const discountRate = parseFloat(document.getElementById('discount-rate').value) || 0;
+        const discountAmount = Math.floor(subtotalSum * (discountRate / 100));
+        const grandTotal = subtotalSum - discountAmount;
+
+        document.getElementById('subtotal-sum-display').innerText = `小計合計: ¥${new Intl.NumberFormat().format(subtotalSum)}`;
+        
+        const discDisplay = document.getElementById('discount-amount-display');
+        if (discountAmount > 0) {
+            discDisplay.style.display = 'block';
+            discDisplay.innerText = `値引き: -¥${new Intl.NumberFormat().format(discountAmount)}`;
+        } else {
+            discDisplay.style.display = 'none';
+        }
+
+        document.getElementById('grand-total').innerText = `¥${new Intl.NumberFormat().format(grandTotal)}`;
     }
 
-    function addManualRow() {
-        const tableBody = document.getElementById('line-items');
-        const rowId = 'row-' + Date.now();
-        const newRow = document.createElement('tr');
-        newRow.id = rowId;
-        newRow.innerHTML = `
-            <td>
-                <input type="hidden" name="product_id[]" value="">
-                <input type="text" name="product_name[]" placeholder="品名を手入力..." required style="width: 100%;">
-            </td>
-            <td><input type="number" name="price[]" value="0" step="0.01" onchange="updateRowSubtotal('${rowId}')" required></td>
-            <td><input type="number" name="quantity[]" value="1" onchange="updateRowSubtotal('${rowId}')" required></td>
-            <td class="subtotal">¥0</td>
-            <td><button type="button" class="btn btn-sm btn-danger" onclick="removeRow('${rowId}')">削除</button></td>
-        `;
-        tableBody.appendChild(newRow);
+    function toggleBulkDiscount() {
+        const isBulk = document.getElementById('is-bulk-discount').checked;
+        const rank = document.getElementById('selected-customer-rank').value;
+        const rateInput = document.getElementById('discount-rate');
+        
+        if (isBulk && rank === 'RETAIL') {
+            rateInput.value = 5;
+        } else if (!isBulk) {
+            rateInput.value = 0;
+        }
+        updateGrandTotal();
+    }
+
+    function changeRank() {
+        const rank = document.getElementById('selected-customer-rank').value;
+        
+        document.querySelectorAll('#line-items tr').forEach(row => {
+            const priceInput = row.querySelector('input[name="price[]"]');
+            if (!priceInput) return;
+            
+            const pricesData = priceInput.getAttribute('data-prices');
+            if (pricesData) {
+                const prices = JSON.parse(pricesData);
+                let newPrice = prices.retail;
+                if (rank === 'RANK_A') newPrice = prices.a ?? prices.retail;
+                else if (rank === 'RANK_B') newPrice = prices.b ?? prices.retail;
+                else if (rank === 'RANK_C') newPrice = prices.c ?? prices.retail;
+                else if (rank === 'RANK_D') newPrice = prices.d ?? prices.retail;
+                else if (rank === 'RANK_E') newPrice = prices.e ?? prices.retail;
+                
+                priceInput.value = newPrice;
+                updateRowSubtotal(row.id);
+            }
+        });
+        
+        toggleBulkDiscount();
+    }
+
+    function selectCustomer(id, name, rank) {
+        document.getElementById('selected-customer-id').value = id;
+        document.getElementById('customer-search').value = name;
+        document.getElementById('customer-search-results').innerHTML = '';
+        
+        const rankSelect = document.getElementById('selected-customer-rank');
+        rankSelect.value = rank;
+        changeRank();
     }
 
     function selectProduct(id, name, prices) {
         const rank = document.getElementById('selected-customer-rank').value || 'RETAIL';
         let price = prices.retail;
-        if (rank === 'RANK_A') price = prices.a || prices.retail;
-        else if (rank === 'RANK_B') price = prices.b || prices.retail;
-        else if (rank === 'RANK_C') price = prices.c || prices.retail;
-        else if (rank === 'RANK_D') price = prices.d || prices.retail;
-        else if (rank === 'RANK_E') price = prices.e || prices.retail;
+        if (rank === 'RANK_A') price = prices.a ?? prices.retail;
+        else if (rank === 'RANK_B') price = prices.b ?? prices.retail;
+        else if (rank === 'RANK_C') price = prices.c ?? prices.retail;
+        else if (rank === 'RANK_D') price = prices.d ?? prices.retail;
+        else if (rank === 'RANK_E') price = prices.e ?? prices.retail;
         const tableBody = document.getElementById('line-items');
         const rowId = 'row-' + id + '-' + Date.now();
         const newRow = document.createElement('tr');
@@ -164,7 +245,7 @@
                 <input type="hidden" name="product_name[]" value="${name}">
                 ${name}
             </td>
-            <td><input type="number" name="price[]" value="${price}" step="0.01" onchange="updateRowSubtotal('${rowId}')" required></td>
+            <td><input type="number" name="price[]" value="${price}" step="0.01" onchange="updateRowSubtotal('${rowId}')" required data-prices='${JSON.stringify(prices)}'></td>
             <td><input type="number" name="quantity[]" value="1" onchange="updateRowSubtotal('${rowId}')" required></td>
             <td class="subtotal">¥${new Intl.NumberFormat().format(price)}</td>
             <td><button type="button" class="btn btn-sm btn-danger" onclick="removeRow('${rowId}')">削除</button></td>
@@ -183,15 +264,6 @@
             rowId.closest('tr').remove();
         }
         updateGrandTotal();
-    }
-
-    function updateGrandTotal() {
-        let total = 0;
-        document.querySelectorAll('.subtotal').forEach(span => {
-            const val = span.innerText.replace(/[¥,]/g, '');
-            total += parseFloat(val) || 0;
-        });
-        document.getElementById('grand-total').innerText = `¥${new Intl.NumberFormat().format(total)}`;
     }
     {% if not order %}
     document.getElementById('order_date').valueAsDate = new Date();

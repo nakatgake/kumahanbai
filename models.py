@@ -68,6 +68,8 @@ class Quotation(Base):
     payment_due_date = Column(DateTime)
     payment_method = Column(String, default="銀行振り込み")
     total_amount = Column(Float, default=0.0)
+    discount_rate = Column(Float, default=0.0)
+    is_bulk_discount = Column(Boolean, default=False)
     status = Column(Enum(QuoteStatus), default=QuoteStatus.DRAFT)
 
     customer = relationship("Customer", back_populates="quotations")
@@ -94,6 +96,8 @@ class Order(Base):
     order_number = Column(String, unique=True)
     order_date = Column(DateTime, default=datetime.datetime.utcnow)
     total_amount = Column(Float)
+    discount_rate = Column(Float, default=0.0)
+    is_bulk_discount = Column(Boolean, default=False)
     status = Column(Enum(OrderStatus), default=OrderStatus.PENDING)
 
     quotation = relationship("Quotation", back_populates="order")

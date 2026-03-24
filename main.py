@@ -59,6 +59,17 @@ def migrate_db():
             if col == 'price_retail' and 'unit_price' in cols:
                 cursor.execute("UPDATE products SET price_retail = unit_price")
     
+    # Check if quotation/order discount fields exist
+    for table in ['quotations', 'orders']:
+        cursor.execute(f"PRAGMA table_info({table})")
+        cols = [row[1] for row in cursor.fetchall()]
+        if 'discount_rate' not in cols:
+            print(f"Migrating {table}: adding discount_rate...")
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN discount_rate FLOAT DEFAULT 0.0")
+        if 'is_bulk_discount' not in cols:
+            print(f"Migrating {table}: adding is_bulk_discount...")
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN is_bulk_discount BOOLEAN DEFAULT 0")
+    
     conn.commit()
     conn.close()
 
@@ -574,6 +585,8 @@ async def create_quotation(
     expiry_date: str = Form(...),
     payment_due_date: str = Form(""),
     payment_method: str = Form("銀行振り込み"),
+    discount_rate: float = Form(0.0),
+    is_bulk_discount: bool = Form(False),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -598,6 +611,8 @@ async def create_quotation(
         expiry_date=datetime.datetime.strptime(expiry_date, '%Y-%m-%d'),
         payment_due_date=pay_due,
         payment_method=payment_method,
+        discount_rate=discount_rate,
+        is_bulk_discount=is_bulk_discount,
         status=models.QuoteStatus.DRAFT
     )
     db.add(quotation)
@@ -623,7 +638,7 @@ async def create_quotation(
         db.add(item)
         total += subtotal
     
-    quotation.total_amount = total
+    quotation.total_amount = total * (1 - (discount_rate / 100))
     db.commit()
     return RedirectResponse(url="/quotations", status_code=303)
 
@@ -654,6 +669,8 @@ async def update_quotation(
     expiry_date: str = Form(...),
     payment_due_date: str = Form(""),
     payment_method: str = Form(""),
+    discount_rate: float = Form(0.0),
+    is_bulk_discount: bool = Form(False),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -675,6 +692,8 @@ async def update_quotation(
         # Fallback if format is different (unlikely with type="date" but for safety)
         pass
     quotation.payment_method = payment_method
+    quotation.discount_rate = discount_rate
+    quotation.is_bulk_discount = is_bulk_discount
 
     if quotation.status == models.QuoteStatus.ORDERED:
         for old_item in db.query(models.QuotationItem).filter(models.QuotationItem.quotation_id == quotation.id).all():
@@ -715,7 +734,7 @@ async def update_quotation(
             if product:
                 product.stock_quantity -= qty
     
-    quotation.total_amount = total
+    quotation.total_amount = total * (1 - (discount_rate / 100))
     db.commit()
     return RedirectResponse(url="/quotations", status_code=303)
 
@@ -1015,6 +1034,8 @@ async def create_direct_order(
     customer_id: str = Form(""),
     order_number: str = Form(...),
     order_date: str = Form(...),
+    discount_rate: float = Form(0.0),
+    is_bulk_discount: bool = Form(False),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -1033,6 +1054,8 @@ async def create_direct_order(
         quote_number=order_number.replace("ORD-", "Q-AUTO-"),
         expiry_date=datetime.datetime.utcnow(),
         status=models.QuoteStatus.ORDERED,
+        discount_rate=discount_rate,
+        is_bulk_discount=is_bulk_discount,
         total_amount=0
     )
     db.add(quotation)
@@ -1062,13 +1085,15 @@ async def create_direct_order(
             if product:
                 product.stock_quantity -= qty
     
-    quotation.total_amount = total
+    quotation.total_amount = total * (1 - (discount_rate / 100))
     
     order = models.Order(
         quotation_id=quotation.id,
         order_number=order_number,
         order_date=datetime.datetime.strptime(order_date, '%Y-%m-%d'),
-        total_amount=total,
+        total_amount=total * (1 - (discount_rate / 100)),
+        discount_rate=discount_rate,
+        is_bulk_discount=is_bulk_discount,
         status=models.OrderStatus.PENDING
     )
     db.add(order)
@@ -1099,6 +1124,8 @@ async def update_order(
     customer_id: str = Form(""),
     order_number: str = Form(...),
     order_date: str = Form(...),
+    discount_rate: float = Form(0.0),
+    is_bulk_discount: bool = Form(False),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -1155,8 +1182,12 @@ async def update_order(
             if product:
                 product.stock_quantity -= qty
     
-    quotation.total_amount = total
-    order.total_amount = total
+    quotation.total_amount = total * (1 - (discount_rate / 100))
+    order.total_amount = quotation.total_amount
+    order.discount_rate = discount_rate
+    order.is_bulk_discount = is_bulk_discount
+    quotation.discount_rate = discount_rate
+    quotation.is_bulk_discount = is_bulk_discount
     db.commit()
     return RedirectResponse(url="/orders", status_code=303)
 
