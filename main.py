@@ -69,6 +69,16 @@ def migrate_db():
         if 'is_bulk_discount' not in cols:
             print(f"Migrating {table}: adding is_bulk_discount...")
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN is_bulk_discount BOOLEAN DEFAULT 0")
+        if 'memo' not in cols:
+            print(f"Migrating {table}: adding memo...")
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN memo TEXT")
+    
+    # Check if invoices memo exists
+    cursor.execute("PRAGMA table_info(invoices)")
+    cols = [row[1] for row in cursor.fetchall()]
+    if 'memo' not in cols:
+        print("Migrating invoices: adding memo...")
+        cursor.execute("ALTER TABLE invoices ADD COLUMN memo TEXT")
     
     conn.commit()
     conn.close()
@@ -588,6 +598,7 @@ async def create_quotation(
     discount_rate: float = Form(0.0),
     is_bulk_discount: bool = Form(False),
     customer_rank: str = Form("RETAIL"),
+    memo: str = Form(""),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -614,7 +625,8 @@ async def create_quotation(
         payment_method=payment_method,
         discount_rate=discount_rate,
         is_bulk_discount=is_bulk_discount,
-        status=models.QuoteStatus.DRAFT
+        status=models.QuoteStatus.DRAFT,
+        memo=memo
     )
     db.add(quotation)
     db.flush()
@@ -677,6 +689,7 @@ async def update_quotation(
     discount_rate: float = Form(0.0),
     is_bulk_discount: bool = Form(False),
     customer_rank: str = Form("RETAIL"),
+    memo: str = Form(""),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -700,6 +713,7 @@ async def update_quotation(
     quotation.payment_method = payment_method
     quotation.discount_rate = discount_rate
     quotation.is_bulk_discount = is_bulk_discount
+    quotation.memo = memo
 
     if quotation.status == models.QuoteStatus.ORDERED:
         for old_item in db.query(models.QuotationItem).filter(models.QuotationItem.quotation_id == quotation.id).all():
@@ -801,7 +815,8 @@ async def copy_quotation(id: int, db: Session = Depends(get_db), user: models.Us
         payment_due_date=original.payment_due_date,
         payment_method=original.payment_method,
         total_amount=original.total_amount,
-        status=models.QuoteStatus.DRAFT
+        status=models.QuoteStatus.DRAFT,
+        memo=original.memo
     )
     db.add(new_quote)
     db.flush()
@@ -1005,7 +1020,8 @@ async def convert_to_order(
         quotation_id=quote.id,
         order_number=quote.quote_number.replace("Q-", "ORD-"),
         total_amount=quote.total_amount,
-        status=models.OrderStatus.PENDING
+        status=models.OrderStatus.PENDING,
+        memo=quote.memo
     )
     db.add(order)
 
@@ -1047,6 +1063,7 @@ async def create_direct_order(
     discount_rate: float = Form(0.0),
     is_bulk_discount: bool = Form(False),
     customer_rank: str = Form("RETAIL"),
+    memo: str = Form(""),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -1067,7 +1084,8 @@ async def create_direct_order(
         status=models.QuoteStatus.ORDERED,
         discount_rate=discount_rate,
         is_bulk_discount=is_bulk_discount,
-        total_amount=0
+        total_amount=0,
+        memo=memo
     )
     db.add(quotation)
     db.flush()
@@ -1109,7 +1127,8 @@ async def create_direct_order(
         total_amount=final_total_tax_excl,
         discount_rate=discount_rate,
         is_bulk_discount=is_bulk_discount,
-        status=models.OrderStatus.PENDING
+        status=models.OrderStatus.PENDING,
+        memo=memo
     )
     db.add(order)
     db.commit()
@@ -1142,6 +1161,7 @@ async def update_order(
     discount_rate: float = Form(0.0),
     is_bulk_discount: bool = Form(False),
     customer_rank: str = Form("RETAIL"),
+    memo: str = Form(""),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -1205,9 +1225,9 @@ async def update_order(
     quotation.total_amount = final_total_tax_excl
     order.total_amount = quotation.total_amount
     order.discount_rate = discount_rate
-    order.is_bulk_discount = is_bulk_discount
-    quotation.discount_rate = discount_rate
     quotation.is_bulk_discount = is_bulk_discount
+    order.memo = memo
+    quotation.memo = memo
     db.commit()
     return RedirectResponse(url="/orders", status_code=303)
 
@@ -1262,7 +1282,8 @@ async def copy_order(id: int, db: Session = Depends(get_db), user: models.User =
         payment_due_date=original_quote.payment_due_date,
         payment_method=original_quote.payment_method,
         total_amount=original_quote.total_amount,
-        status=models.QuoteStatus.ORDERED
+        status=models.QuoteStatus.ORDERED,
+        memo=original_quote.memo
     )
     db.add(new_quote)
     db.flush()
@@ -1284,7 +1305,8 @@ async def copy_order(id: int, db: Session = Depends(get_db), user: models.User =
         order_number=f"ORD-COPY-{datetime.datetime.now().strftime('%m%d%H%M%S')}",
         order_date=datetime.datetime.now(),
         total_amount=new_quote.total_amount,
-        status=models.OrderStatus.PENDING
+        status=models.OrderStatus.PENDING,
+        memo=original.memo
     )
     db.add(new_order)
     db.commit()
@@ -1406,7 +1428,8 @@ async def create_invoice(order_id: int, db: Session = Depends(get_db), user: mod
         issue_date=order.order_date, # Default to order date
         due_date=order.order_date + datetime.timedelta(days=30),
         total_amount=order.total_amount,
-        status=models.InvoiceStatus.UNPAID
+        status=models.InvoiceStatus.UNPAID,
+        memo=order.memo
     )
     db.add(invoice)
     
@@ -1516,6 +1539,7 @@ async def update_invoice(
     total_amount: float = Form(...),
     due_date: str = Form(...),
     status: str = Form(...),
+    memo: str = Form(""),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -1534,6 +1558,7 @@ async def update_invoice(
     except ValueError:
         pass
     invoice.status = models.InvoiceStatus(status)
+    invoice.memo = memo
     
     db.commit()
     return RedirectResponse(url="/invoices", status_code=303)

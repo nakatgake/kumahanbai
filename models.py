@@ -71,6 +71,7 @@ class Quotation(Base):
     discount_rate = Column(Float, default=0.0)
     is_bulk_discount = Column(Boolean, default=False)
     status = Column(Enum(QuoteStatus), default=QuoteStatus.DRAFT)
+    memo = Column(String)
 
     customer = relationship("Customer", back_populates="quotations")
     items = relationship("QuotationItem", back_populates="quotation", cascade="all, delete-orphan")
@@ -99,6 +100,7 @@ class Order(Base):
     discount_rate = Column(Float, default=0.0)
     is_bulk_discount = Column(Boolean, default=False)
     status = Column(Enum(OrderStatus), default=OrderStatus.PENDING)
+    memo = Column(String)
 
     quotation = relationship("Quotation", back_populates="order")
     invoice = relationship("Invoice", back_populates="order", uselist=False, cascade="all, delete-orphan")
@@ -112,6 +114,7 @@ class Invoice(Base):
     due_date = Column(DateTime)
     total_amount = Column(Float)
     status = Column(Enum(InvoiceStatus), default=InvoiceStatus.UNPAID)
+    memo = Column(String)
 
     order = relationship("Order", back_populates="invoice")
 

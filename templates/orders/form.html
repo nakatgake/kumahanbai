@@ -44,6 +44,10 @@
                 <label>受注日</label>
                 <input type="date" name="order_date" value="{{ order.order_date.strftime('%Y-%m-%d') if order else '' }}" required id="order_date">
             </div>
+            <div class="form-group" style="grid-column: span 2;">
+                <label>メモ</label>
+                <textarea name="memo" rows="2" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px;">{{ order.memo if order else '' }}</textarea>
+            </div>
         </div>
 
         <h3 style="margin-bottom: 1rem; margin-top: 2rem;">受注明細</h3>
