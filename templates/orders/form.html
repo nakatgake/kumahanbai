@@ -332,5 +332,8 @@
     {% if not order %}
     document.getElementById('order_date').valueAsDate = new Date();
     {% endif %}
+    
+    // Initial calculation
+    updateGrandTotal();
 </script>
 {% endblock %}
