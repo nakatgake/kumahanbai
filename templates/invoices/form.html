@@ -24,10 +24,55 @@
             <input type="text" value="{{ invoice.order.quotation.customer.company }}" disabled>
         </div>
 
-        <div class="form-group">
-            <label>請求金額 (JPY)</label>
-            <input type="number" name="total_amount" value="{{ invoice.total_amount }}" step="0.01" required>
+        <div style="background: #f9f9f9; padding: 1rem; border-radius: 8px; border: 1px solid #eee; margin-bottom: 1.5rem;">
+            <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-bottom: 0;">
+                    <input type="checkbox" name="is_bulk_discount" id="is-bulk-discount" onchange="updateGrandTotal()" {{ 'checked' if invoice and invoice.is_bulk_discount else '' }}>
+                    <span style="font-size: 0.95rem; font-weight: bold; color: #d35400;">大量購入値引き (小売5%)</span>
+                </label>
+                <div style="display: flex; align-items: center; gap: 0.3rem;">
+                    <span style="font-size: 0.9rem; color: #666;">値引率:</span>
+                    <input type="number" name="discount_rate" id="discount-rate" value="{{ invoice.discount_rate if invoice else '0' }}" step="0.1" style="width: 70px; padding: 0.3rem;" onchange="updateGrandTotal()">
+                    <span style="font-size: 0.9rem;">%</span>
+                </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem;">
+                {% set original_subtotal = invoice.order.quotation.items|sum(attribute='subtotal') if invoice.order.quotation else 0 %}
+                <div id="subtotal-sum-display" style="color: #666;">小計合計: ¥{{ "{:,.0f}".format(original_subtotal) }}</div>
+                <div id="discount-amount-display" style="color: #e74c3c; display: {{ 'block' if invoice.discount_rate > 0 else 'none' }};">
+                    値引き: -¥{{ "{:,.0f}".format(original_subtotal * (invoice.discount_rate / 100)) }}
+                </div>
+                <div style="font-size: 1.2rem; font-weight: bold; border-top: 1px solid #ccc; padding-top: 0.5rem; margin-top: 0.5rem;">
+                    請求金額: <span id="grand-total-display">¥{{ "{:,.0f}".format(invoice.total_amount) }}</span>
+                </div>
+                <input type="hidden" name="total_amount" id="total-amount-input" value="{{ invoice.total_amount }}">
+            </div>
         </div>
+
+        <script>
+            function updateGrandTotal() {
+                const subtotal = {{ original_subtotal }};
+                const discountRate = parseFloat(document.getElementById('discount-rate').value) || 0;
+                const isBulk = document.getElementById('is-bulk-discount').checked;
+                
+                // If bulk checked and rate is 0, default to 5
+                if (isBulk && discountRate === 0) {
+                    document.getElementById('discount-rate').value = 5;
+                    return updateGrandTotal();
+                }
+
+                const discountAmount = Math.floor(subtotal * (discountRate / 100));
+                const finalTotal = subtotal - discountAmount;
+
+                document.getElementById('discount-amount-display').innerText = `値引き: -¥${new Intl.NumberFormat().format(discountAmount)}`;
+                document.getElementById('discount-amount-display').style.display = discountAmount > 0 ? 'block' : 'none';
+                document.getElementById('grand-total-display').innerText = `¥${new Intl.NumberFormat().format(finalTotal)}`;
+                document.getElementById('total-amount-input').value = finalTotal;
+            }
+            // Initial calculation
+            updateGrandTotal();
+        </script>
 
             <div class="form-group">
                 <label>支払期限</label>

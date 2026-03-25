@@ -113,6 +113,8 @@ class Invoice(Base):
     issue_date = Column(DateTime, default=datetime.datetime.utcnow)
     due_date = Column(DateTime)
     total_amount = Column(Float)
+    discount_rate = Column(Float, default=0.0)
+    is_bulk_discount = Column(Boolean, default=False)
     status = Column(Enum(InvoiceStatus), default=InvoiceStatus.UNPAID)
     memo = Column(String)
 

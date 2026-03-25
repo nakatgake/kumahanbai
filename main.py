@@ -73,9 +73,15 @@ def migrate_db():
             print(f"Migrating {table}: adding memo...")
             cursor.execute(f"ALTER TABLE {table} ADD COLUMN memo TEXT")
     
-    # Check if invoices memo exists
+    # Check if invoice discount fields exist
     cursor.execute("PRAGMA table_info(invoices)")
     cols = [row[1] for row in cursor.fetchall()]
+    if 'discount_rate' not in cols:
+        print("Migrating invoices: adding discount_rate...")
+        cursor.execute("ALTER TABLE invoices ADD COLUMN discount_rate FLOAT DEFAULT 0.0")
+    if 'is_bulk_discount' not in cols:
+        print("Migrating invoices: adding is_bulk_discount...")
+        cursor.execute("ALTER TABLE invoices ADD COLUMN is_bulk_discount BOOLEAN DEFAULT 0")
     if 'memo' not in cols:
         print("Migrating invoices: adding memo...")
         cursor.execute("ALTER TABLE invoices ADD COLUMN memo TEXT")
@@ -1436,6 +1442,8 @@ async def create_invoice(order_id: int, db: Session = Depends(get_db), user: mod
         issue_date=order.order_date, # Default to order date
         due_date=order.order_date + datetime.timedelta(days=30),
         total_amount=order.total_amount,
+        discount_rate=order.discount_rate,
+        is_bulk_discount=order.is_bulk_discount,
         status=models.InvoiceStatus.UNPAID,
         memo=order.memo
     )
@@ -1547,6 +1555,8 @@ async def update_invoice(
     total_amount: float = Form(...),
     due_date: str = Form(...),
     status: str = Form(...),
+    discount_rate: float = Form(0.0),
+    is_bulk_discount: bool = Form(False),
     memo: str = Form(""),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
@@ -1566,6 +1576,8 @@ async def update_invoice(
     except ValueError:
         pass
     invoice.status = models.InvoiceStatus(status)
+    invoice.discount_rate = discount_rate
+    invoice.is_bulk_discount = is_bulk_discount
     invoice.memo = memo
     
     db.commit()

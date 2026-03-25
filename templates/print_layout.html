@@ -332,9 +332,9 @@
                     <td class="summary-label">小計（税抜）</td>
                     <td class="summary-value">{{ "¥{:,.0f}".format(original_subtotal) }}</td>
                 </tr>
-                {% if doc.discount_rate > 0 %}
+                {% if doc.discount_rate|default(0) > 0 %}
                 <tr>
-                    <td class="summary-label">値引き ({{ doc.discount_rate }}%)</td>
+                    <td class="summary-label">値引き ({{ doc.discount_rate|default(0) }}%)</td>
                     <td class="summary-value" style="color: #e74c3c;">-{{ "¥{:,.0f}".format(original_subtotal - doc.total_amount) }}</td>
                 </tr>
                 {% endif %}
