@@ -816,6 +816,8 @@ async def copy_quotation(id: int, db: Session = Depends(get_db), user: models.Us
         payment_method=original.payment_method,
         total_amount=original.total_amount,
         status=models.QuoteStatus.DRAFT,
+        discount_rate=original.discount_rate,
+        is_bulk_discount=original.is_bulk_discount,
         memo=original.memo
     )
     db.add(new_quote)
@@ -1020,6 +1022,8 @@ async def convert_to_order(
         quotation_id=quote.id,
         order_number=quote.quote_number.replace("Q-", "ORD-"),
         total_amount=quote.total_amount,
+        discount_rate=quote.discount_rate,
+        is_bulk_discount=quote.is_bulk_discount,
         status=models.OrderStatus.PENDING,
         memo=quote.memo
     )
@@ -1282,6 +1286,8 @@ async def copy_order(id: int, db: Session = Depends(get_db), user: models.User =
         payment_due_date=original_quote.payment_due_date,
         payment_method=original_quote.payment_method,
         total_amount=original_quote.total_amount,
+        discount_rate=original_quote.discount_rate,
+        is_bulk_discount=original_quote.is_bulk_discount,
         status=models.QuoteStatus.ORDERED,
         memo=original_quote.memo
     )
@@ -1305,6 +1311,8 @@ async def copy_order(id: int, db: Session = Depends(get_db), user: models.User =
         order_number=f"ORD-COPY-{datetime.datetime.now().strftime('%m%d%H%M%S')}",
         order_date=datetime.datetime.now(),
         total_amount=new_quote.total_amount,
+        discount_rate=new_quote.discount_rate,
+        is_bulk_discount=new_quote.is_bulk_discount,
         status=models.OrderStatus.PENDING,
         memo=original.memo
     )
