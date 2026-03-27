@@ -3,9 +3,12 @@
 {% block content %}
 <div class="header">
     <h2>通知一覧</h2>
-    <form action="/admin/generate-monthly-invoices" method="post" style="display: inline;">
-        <button type="submit" class="btn btn-warning" onclick="return confirm('前月分の月次請求書を生成しますか？')">月次請求書を生成</button>
-    </form>
+    <div style="display: flex; gap: 10px;">
+        <form action="/admin/generate-monthly-invoices" method="post" style="display: inline;">
+            <button type="submit" class="btn btn-warning" onclick="return confirm('前月分の月次請求書を生成しますか？')">月次請求書を生成</button>
+        </form>
+        <a href="/admin/invoice-dispatch" class="btn btn-primary" style="text-decoration: none;">毎月2日 請求書一括処理</a>
+    </div>
 </div>
 
 <div class="card">

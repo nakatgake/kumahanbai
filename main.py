@@ -297,6 +297,7 @@ async def create_customer(
     website_url: str = Form(""),
     rank: str = Form("RETAIL"),
     is_agency: bool = Form(False),
+    invoice_delivery_method: str = Form("POSTAL"),
     login_id: Optional[str] = Form(None),
     agency_password: Optional[str] = Form(None),
     db: Session = Depends(get_db),
@@ -307,6 +308,7 @@ async def create_customer(
         email=email, phone=phone, address=address, website_url=website_url,
         rank=models.CustomerRank[rank],
         is_agency=is_agency,
+        invoice_delivery_method=invoice_delivery_method,
         login_id=login_id if is_agency and login_id else None,
         agency_password=agency_password if is_agency and agency_password else None
     )
@@ -342,6 +344,7 @@ async def update_customer(
     website_url: str = Form(""),
     rank: str = Form("RETAIL"),
     is_agency: bool = Form(False),
+    invoice_delivery_method: str = Form("POSTAL"),
     login_id: Optional[str] = Form(None),
     agency_password: Optional[str] = Form(None),
     db: Session = Depends(get_db),
@@ -358,6 +361,7 @@ async def update_customer(
         customer.website_url = website_url
         customer.rank = models.CustomerRank[rank]
         customer.is_agency = is_agency
+        customer.invoice_delivery_method = invoice_delivery_method
         customer.login_id = login_id if is_agency and login_id else None
         customer.agency_password = agency_password if is_agency and agency_password else None
         db.commit()
@@ -2528,6 +2532,154 @@ async def admin_notification_count(db: Session = Depends(get_db), user: models.U
         models.Notification.is_read == False
     ).count()
     return {"count": count}
+
+@app.get("/admin/invoice-dispatch", response_class=HTMLResponse)
+async def admin_invoice_dispatch(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    # すべての未入金・未発行の請求書を取得 (発行済みに移行していないもの)
+    unpaid_invoices = db.query(models.Invoice).filter(
+        models.Invoice.status == models.InvoiceStatus.UNPAID
+    ).all()
+    
+    email_invoices = []
+    postal_invoices = []
+    
+    for inv in unpaid_invoices:
+        if inv.order and inv.order.customer:
+            method = inv.order.customer.invoice_delivery_method
+            if method == "EMAIL":
+                email_invoices.append(inv)
+            else:
+                postal_invoices.append(inv)
+                
+    success_msg = request.query_params.get("success")
+    error_msg = request.query_params.get("error")
+                
+    return templates.TemplateResponse(request=request, name="invoices/dispatch.html", context={
+        "request": request,
+        "active_page": "invoice_dispatch",
+        "email_invoices": email_invoices,
+        "postal_invoices": postal_invoices,
+        "success_msg": success_msg,
+        "error_msg": error_msg,
+        "user": user
+    })
+
+import smtplib
+from email.message import EmailMessage
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+@app.post("/admin/invoice-dispatch/email")
+async def dispatch_invoices_email(
+    request: Request,
+    invoice_ids: list[int] = Form([]),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    if not invoice_ids:
+        return RedirectResponse(url="/admin/invoice-dispatch?error=1", status_code=303)
+        
+    settings_records = db.query(models.SystemSetting).all()
+    settings = {s.key: s.value for s in settings_records}
+    
+    smtp_host = settings.get("smtp_host")
+    smtp_port_str = settings.get("smtp_port", "587")
+    smtp_port = int(smtp_port_str) if smtp_port_str.isdigit() else 587
+    smtp_user = settings.get("smtp_user")
+    smtp_pass = settings.get("smtp_pass")
+    smtp_from = settings.get("smtp_from", smtp_user)
+    
+    if not all([smtp_host, smtp_user, smtp_pass]):
+        return RedirectResponse(url="/admin/invoice-dispatch?error=2", status_code=303)
+
+    success_count = 0
+    server = None
+    try:
+        if smtp_port == 465:
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port)
+        else:
+            server = smtplib.SMTP(smtp_host, smtp_port)
+            server.starttls()
+        server.login(smtp_user, smtp_pass)
+        
+        bank_info = settings.get("bank_info", "")
+        
+        for inv_id in invoice_ids:
+            inv = db.query(models.Invoice).get(inv_id)
+            if not inv or not inv.order or not inv.order.customer:
+                continue
+            
+            customer = inv.order.customer
+            if not customer.email:
+                continue
+                
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = f"【株式会社熊ノ護化研】ご請求書（{inv.invoice_number}）のご案内"
+            msg["From"] = smtp_from if smtp_from else "no-reply@kumanomori.jp"
+            msg["To"] = customer.email
+            
+            due_date_str = inv.due_date.strftime('%Y年%m月%d日') if inv.due_date else '末日'
+            bank_html = bank_info.replace(chr(10), '<br>') if bank_info else '※銀行振込先は別途ご案内いたします。'
+            
+            html = f"""
+            <html>
+            <body style="font-family: sans-serif; line-height: 1.6; color: #333;">
+                <h2>ご請求のご案内</h2>
+                <p>{customer.company or customer.name} 様</p>
+                <p>平素は格別のお引き立てをいただき、厚く御礼申し上げます。<br>
+                以下の通りご請求申し上げますので、ご確認のほどよろしくお願いいたします。</p>
+                
+                <table style="width: 100%; max-width: 600px; border-collapse: collapse; margin-top: 20px;">
+                    <tr>
+                        <th style="text-align: left; padding: 10px; border-bottom: 2px solid #ccc;">請求書番号</th>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">{inv.invoice_number}</td>
+                    </tr>
+                    <tr>
+                        <th style="text-align: left; padding: 10px; border-bottom: 2px solid #ccc;">ご請求金額</th>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee; font-size: 1.2em; font-weight: bold; color: #e74c3c;">
+                            ¥{"{:,.0f}".format(inv.total_amount)}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th style="text-align: left; padding: 10px; border-bottom: 2px solid #ccc;">お支払期限</th>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">{due_date_str}</td>
+                    </tr>
+                </table>
+                
+                <h3 style="margin-top: 30px;">■ お振込先</h3>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 5px;">
+                    {bank_html}
+                </div>
+                
+                <hr style="margin-top: 40px; border: none; border-top: 1px solid #eee;">
+                <p style="font-size: 0.9em; color: #888;">
+                    株式会社熊ノ護化研<br>
+                    〒010-0001 秋田県秋田市中通3-1-9<br>
+                    TEL: 018-838-1920
+                </p>
+            </body>
+            </html>
+            """
+            
+            msg.attach(MIMEText(html, "html"))
+            server.send_message(msg)
+            
+            inv.status = models.InvoiceStatus.ISSUED
+            success_count += 1
+            
+        db.commit()
+    except Exception as e:
+        print(f"SMTP Error: {e}")
+        return RedirectResponse(url="/admin/invoice-dispatch?error=3", status_code=303)
+    finally:
+        if server:
+            server.quit()
+            
+    return RedirectResponse(url=f"/admin/invoice-dispatch?success={success_count}", status_code=303)
 
 @app.get("/notifications/{notification_id}/read")
 async def read_notification(

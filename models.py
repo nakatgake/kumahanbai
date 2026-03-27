@@ -43,6 +43,7 @@ class Customer(Base):
     is_agency = Column(Boolean, default=False)
     login_id = Column(String, unique=True, nullable=True)
     agency_password = Column(String, nullable=True)  # 平文で保存（当社が確認可能）
+    invoice_delivery_method = Column(String, default="POSTAL") # "POSTAL" or "EMAIL"
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     quotations = relationship("Quotation", back_populates="customer", cascade="all, delete-orphan")

@@ -1,0 +1,109 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>毎月2日 請求書一括処理</h2>
+    <p style="color: #666; margin-top: 0.5rem;">
+        全未入金請求書を、顧客の「請求書送付方法」に基づいてメール送付と郵送（印刷）に振り分けて表示しています。
+    </p>
+</div>
+
+{% if success_msg %}
+<div style="background: #d4edda; color: #155724; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; border: 1px solid #c3e6cb;">
+    ✅ {{ success_msg }}件の未入金請求書をメールで一括送信しました。
+</div>
+{% endif %}
+
+{% if error_msg %}
+<div style="background: #f8d7da; color: #721c24; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; border: 1px solid #f5c6cb;">
+    ❌ エラーが発生しました。
+    {% if error_msg == '1' %}送信対象が選択されていません。
+    {% elif error_msg == '2' %}システム設定にてSMTPメール配信の設定が完了していません。
+    {% else %}メールサーバーとの通信に失敗しました。設定を見直してください。{% endif %}
+</div>
+{% endif %}
+
+<div class="card" style="margin-bottom: 2rem;">
+    <h3 style="border-bottom: 2px solid #3498db; padding-bottom: 0.5rem; color: #2c3e50;">📧 メール送信対象 ({{ email_invoices|length }}件)</h3>
+    <p style="font-size: 0.9rem; color: #555;">以下の請求書は、顧客設定で「メール」が選択されています。PDF化して一括送信します。</p>
+    
+    {% if email_invoices %}
+    <form action="/admin/invoice-dispatch/email" method="post" id="email-dispatch-form">
+        <table style="margin-top: 1rem;">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="check-all-email" checked onchange="toggleAll('email', this.checked)"></th>
+                    <th>請求書番号</th>
+                    <th>顧客名</th>
+                    <th>メールアドレス</th>
+                    <th>請求額</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for inv in email_invoices %}
+                <tr>
+                    <td><input type="checkbox" name="invoice_ids" value="{{ inv.id }}" class="check-email" checked></td>
+                    <td>{{ inv.invoice_number }}</td>
+                    <td>{{ inv.order.customer.company if inv.order.customer.company else inv.order.customer.name }}</td>
+                    <td>{{ inv.order.customer.email }}</td>
+                    <td>¥{{ "{:,.0f}".format(inv.total_amount) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div style="margin-top: 1rem; text-align: right;">
+            <button type="submit" class="btn btn-primary" onclick="return confirm('選択した請求書をPDF添付でメール一括送信します。よろしいですか？')">📧 選択した請求書をメール一括送信する</button>
+        </div>
+    </form>
+    {% else %}
+    <p style="color: #999; text-align: center; padding: 2rem;">メール送信対象の請求書はありません。</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h3 style="border-bottom: 2px solid #27ae60; padding-bottom: 0.5rem; color: #2c3e50;">🖨️ 郵送(印刷)対象 ({{ postal_invoices|length }}件)</h3>
+    <p style="font-size: 0.9rem; color: #555;">以下の請求書は、顧客設定で「郵送」が選択されています。一括でA4印刷を行ってください。</p>
+    
+    {% if postal_invoices %}
+    <form action="/invoices/bulk-print" method="get" target="_blank">
+        <table style="margin-top: 1rem;">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="check-all-postal" checked onchange="toggleAll('postal', this.checked)"></th>
+                    <th>請求書番号</th>
+                    <th>顧客名</th>
+                    <th>住所</th>
+                    <th>請求額</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for inv in postal_invoices %}
+                <tr>
+                    <td><input type="checkbox" name="invoice_ids" value="{{ inv.id }}" class="check-postal" checked></td>
+                    <td>{{ inv.invoice_number }}</td>
+                    <td>{{ inv.order.customer.company if inv.order.customer.company else inv.order.customer.name }}</td>
+                    <td>{{ inv.order.customer.address }}</td>
+                    <td>¥{{ "{:,.0f}".format(inv.total_amount) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div style="margin-top: 1rem; text-align: right;">
+            <!-- action is bulk-print which expects invoice_ids as query params. Since it's GET, form submission handles this -->
+            <button type="submit" class="btn btn-success">🖨️ 選択した請求書を一括印刷する (A4)</button>
+        </div>
+    </form>
+    {% else %}
+    <p style="color: #999; text-align: center; padding: 2rem;">郵送（印刷）対象の請求書はありません。</p>
+    {% endif %}
+</div>
+
+<script>
+function toggleAll(type, checked) {
+    const checkboxes = document.querySelectorAll('.check-' + type);
+    checkboxes.forEach(cb => {
+        cb.checked = checked;
+    });
+}
+</script>
+{% endblock %}
