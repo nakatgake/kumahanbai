@@ -2477,6 +2477,17 @@ async def admin_process_agency_order(
         db.add(notification)
         db.commit()
     return RedirectResponse(url="/agency-orders", status_code=303)
+@app.post("/admin/agency-orders/{order_id}/delete")
+async def delete_agency_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    order = db.query(models.AgencyOrder).get(order_id)
+    if order:
+        db.delete(order)
+        db.commit()
+    return RedirectResponse(url="/agency-orders", status_code=303)
 
 @app.post("/admin/agency-orders/{order_id}/convert")
 async def convert_agency_order_to_main(

@@ -56,6 +56,10 @@
                             <button type="submit" class="btn btn-sm btn-primary">更新</button>
                         </form>
                         
+                        <form action="/admin/agency-orders/{{ order.id }}/delete" method="post" onsubmit="return confirm('この代理店発注を削除してもよろしいですか？');" style="display: inline;">
+                            <button type="submit" class="btn btn-sm btn-outline-danger" style="color: #e74c3c; border: 1px solid #e74c3c; background: transparent; padding: 0.3rem 0.6rem; border-radius: 4px; cursor: pointer;">削除</button>
+                        </form>
+                        
                         {% if order.status == '未処理' %}
                         <form action="/admin/agency-orders/{{ order.id }}/convert" method="post" onsubmit="return confirm('この発注を受注管理に登録しますか？');">
                             <button type="submit" class="btn btn-sm btn-success" style="background: #27ae60;">受注管理に登録</button>
