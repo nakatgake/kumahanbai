@@ -46,7 +46,7 @@
                     <td>{{ inv.invoice_number }}</td>
                     <td>{{ inv.order.quotation.customer.company if inv.order.quotation.customer.company else inv.order.quotation.customer.name }}</td>
                     <td>{{ inv.order.quotation.customer.email if inv.order.quotation.customer.email else '' }}</td>
-                    <td>¥{{ "{:,.0f}".format(inv.total_amount) if inv.total_amount is not None else "0" }}</td>
+                    <td>¥{{ "{:,.0f}".format(inv.total_amount) if inv.total_amount is not none else "0" }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -83,7 +83,7 @@
                     <td>{{ inv.invoice_number }}</td>
                     <td>{{ inv.order.quotation.customer.company if inv.order.quotation.customer.company else inv.order.quotation.customer.name }}</td>
                     <td>{{ inv.order.quotation.customer.address if inv.order.quotation.customer.address else '' }}</td>
-                    <td>¥{{ "{:,.0f}".format(inv.total_amount) if inv.total_amount is not None else "0" }}</td>
+                    <td>¥{{ "{:,.0f}".format(inv.total_amount) if inv.total_amount is not none else "0" }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
