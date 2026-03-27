@@ -2096,7 +2096,14 @@ async def agency_create_order(
     quantities = form_data.getlist("quantity[]")
     
     try:
-        if not product_ids or all(int(q) == 0 for q in quantities):
+        # Check if at least one item has a quantity > 0 (handle empty strings as 0)
+        def parse_qty(q):
+            try:
+                return int(q)
+            except (ValueError, TypeError):
+                return 0
+                
+        if not product_ids or all(parse_qty(q) == 0 for q in quantities):
             return HTMLResponse(content="<script>alert('商品を1つ以上選択してください'); history.back();</script>", status_code=400)
         
         order_number = f"AG-{agency.id}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
