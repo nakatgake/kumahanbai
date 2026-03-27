@@ -2551,40 +2551,37 @@ async def admin_invoice_dispatch(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
-    try:
-        # すべての未入金・未発行の請求書を取得 (発行済みに移行していないもの)
-        unpaid_invoices = db.query(models.Invoice).filter(
-            models.Invoice.status == models.InvoiceStatus.UNPAID
-        ).all()
-        
-        email_invoices = []
-        postal_invoices = []
-        
-        for inv in unpaid_invoices:
-            if inv.order and inv.order.customer:
-                # カラムが存在しない場合やデータがNULLの場合の安全策
-                method = getattr(inv.order.customer, 'invoice_delivery_method', 'POSTAL')
-                if method == "EMAIL":
-                    email_invoices.append(inv)
-                else:
-                    postal_invoices.append(inv)
-                    
-        success_msg = request.query_params.get("success")
-        error_msg = request.query_params.get("error")
-                    
-        return templates.TemplateResponse(request=request, name="invoices/dispatch.html", context={
-            "request": request,
-            "active_page": "invoice_dispatch",
-            "email_invoices": email_invoices,
-            "postal_invoices": postal_invoices,
-            "success_msg": success_msg,
-            "error_msg": error_msg,
-            "user": user
-        })
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        return HTMLResponse(content=f"<h3>Debug Error Information</h3><pre>{error_details}</pre>", status_code=500)
+    # すべての未入金・未発行の請求書を取得 (発行済みに移行していないもの)
+    unpaid_invoices = db.query(models.Invoice).filter(
+        models.Invoice.status == models.InvoiceStatus.UNPAID
+    ).all()
+    
+    email_invoices = []
+    postal_invoices = []
+    
+    for inv in unpaid_invoices:
+        # 通常の注文(Order)にはQuotationを介してCustomerが紐付いている
+        if inv.order and inv.order.quotation and inv.order.quotation.customer:
+            customer = inv.order.quotation.customer
+            # カラムが存在しない場合やデータがNULLの場合の安全策
+            method = getattr(customer, 'invoice_delivery_method', 'POSTAL')
+            if method == "EMAIL":
+                email_invoices.append(inv)
+            else:
+                postal_invoices.append(inv)
+                
+    success_msg = request.query_params.get("success")
+    error_msg = request.query_params.get("error")
+                
+    return templates.TemplateResponse(request=request, name="invoices/dispatch.html", context={
+        "request": request,
+        "active_page": "invoice_dispatch",
+        "email_invoices": email_invoices,
+        "postal_invoices": postal_invoices,
+        "success_msg": success_msg,
+        "error_msg": error_msg,
+        "user": user
+    })
 
 import smtplib
 from email.message import EmailMessage
@@ -2628,10 +2625,10 @@ async def dispatch_invoices_email(
         
         for inv_id in invoice_ids:
             inv = db.query(models.Invoice).get(inv_id)
-            if not inv or not inv.order or not inv.order.customer:
+            if not inv or not inv.order or not inv.order.quotation or not inv.order.quotation.customer:
                 continue
             
-            customer = inv.order.customer
+            customer = inv.order.quotation.customer
             if not customer.email:
                 continue
                 
