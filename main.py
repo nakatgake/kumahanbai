@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, Request, Form, File, UploadFile
+from fastapi import FastAPI, Depends, Request, Form, File, UploadFile, Query
 from typing import Optional
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 import shutil
@@ -2695,6 +2695,33 @@ async def dispatch_invoices_email(
             server.quit()
             
     return RedirectResponse(url=f"/admin/invoice-dispatch?success={success_count}", status_code=303)
+    
+@app.get("/invoices/bulk-print", response_class=HTMLResponse)
+async def admin_bulk_print_invoices(
+    request: Request,
+    invoice_ids: list[int] = Query(...),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    # 印刷対象の請求書を取得
+    invoices = db.query(models.Invoice).filter(
+        models.Invoice.id.in_(invoice_ids)
+    ).all()
+    
+    if not invoices:
+        return RedirectResponse(url="/admin/invoice-dispatch", status_code=303)
+    
+    # 印刷した分を「請求書発行済」に自動変更
+    for inv in invoices:
+        if inv.status == models.InvoiceStatus.UNPAID:
+            inv.status = models.InvoiceStatus.ISSUED
+    db.commit()
+    
+    return templates.TemplateResponse(request=request, name="invoices/bulk_print.html", context={
+        "request": request,
+        "invoices": invoices,
+        "user": user
+    })
 
 @app.get("/notifications/{notification_id}/read")
 async def read_notification(
