@@ -1,0 +1,70 @@
+{% extends "agency/layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>発注詳細</h2>
+    <a href="/agency/orders" class="btn" style="background: #ccc;">戻る</a>
+</div>
+
+<div class="card">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
+        <div>
+            <strong>発注番号:</strong> {{ order.order_number }}
+        </div>
+        <div>
+            <strong>発注日:</strong> {{ order.order_date.strftime('%Y/%m/%d') if order.order_date else '-' }}
+        </div>
+        <div>
+            <strong>ステータス:</strong>
+            {% if order.status == '未処理' %}
+            <span class="badge badge-warning">{{ order.status }}</span>
+            {% elif order.status == '処理済み' %}
+            <span class="badge badge-success">{{ order.status }}</span>
+            {% else %}
+            <span class="badge badge-danger">{{ order.status }}</span>
+            {% endif %}
+        </div>
+        <div>
+            <strong>合計金額（税抜）:</strong> ¥{{ '{:,.0f}'.format(order.total_amount) }}
+        </div>
+    </div>
+
+    {% if order.memo %}
+    <div style="margin-bottom: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+        <strong>備考:</strong> {{ order.memo }}
+    </div>
+    {% endif %}
+
+    <h3 style="margin-bottom: 1rem;">発注明細</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>商品名</th>
+                <th>単価</th>
+                <th>数量</th>
+                <th>小計</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in order.items %}
+            <tr>
+                <td>{{ item.product_name }}</td>
+                <td>¥{{ '{:,.0f}'.format(item.unit_price) }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>¥{{ '{:,.0f}'.format(item.subtotal) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="3" style="text-align: right; font-weight: bold;">合計（税抜）:</td>
+                <td style="font-weight: bold;">¥{{ '{:,.0f}'.format(order.total_amount) }}</td>
+            </tr>
+            <tr>
+                <td colspan="3" style="text-align: right; font-weight: bold; color: #1a5276;">合計（税込10%）:</td>
+                <td style="font-weight: bold; color: #1a5276;">¥{{ '{:,.0f}'.format(order.total_amount * 1.1) }}</td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% endblock %}

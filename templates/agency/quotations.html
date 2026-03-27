@@ -1,0 +1,43 @@
+{% extends "agency/layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>見積書一覧</h2>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>見積番号</th>
+                <th>発行日</th>
+                <th>有効期限</th>
+                <th>金額（税抜）</th>
+                <th>状態</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for q in quotations %}
+            <tr>
+                <td>{{ q.quote_number }}</td>
+                <td>{{ q.issue_date.strftime('%Y/%m/%d') if q.issue_date else '-' }}</td>
+                <td>{{ q.expiry_date.strftime('%Y/%m/%d') if q.expiry_date else '-' }}</td>
+                <td style="font-weight: 600;">¥{{ '{:,.0f}'.format(q.total_amount) }}</td>
+                <td>
+                    <span class="badge {% if q.status.value == '受注済み' %}badge-success{% elif q.status.value == '送付済み' %}badge-info{% elif q.status.value == '失注' %}badge-danger{% else %}badge-secondary{% endif %}">
+                        {{ q.status.value }}
+                    </span>
+                </td>
+                <td>
+                    <a href="/agency/quotations/{{ q.id }}/print" class="btn btn-sm btn-info" target="_blank">印刷</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if not quotations %}
+    <div style="text-align: center; padding: 2rem; color: #999;">見積書はありません</div>
+    {% endif %}
+</div>
+{% endblock %}

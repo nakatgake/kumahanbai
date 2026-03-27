@@ -1,0 +1,46 @@
+{% extends "agency/layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>発注履歴</h2>
+    <a href="/agency/order/new" class="btn btn-primary" style="background: #1a5276;">新規発注</a>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>発注番号</th>
+                <th>発注日</th>
+                <th>合計金額（税抜）</th>
+                <th>ステータス</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for order in orders %}
+            <tr>
+                <td>{{ order.order_number }}</td>
+                <td>{{ order.order_date.strftime('%Y/%m/%d') if order.order_date else '-' }}</td>
+                <td>¥{{ '{:,.0f}'.format(order.total_amount) }}</td>
+                <td>
+                    {% if order.status == '未処理' %}
+                    <span class="badge badge-warning">{{ order.status }}</span>
+                    {% elif order.status == '処理済み' %}
+                    <span class="badge badge-success">{{ order.status }}</span>
+                    {% else %}
+                    <span class="badge badge-danger">{{ order.status }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="/agency/orders/{{ order.id }}" class="btn btn-sm btn-info">詳細</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if not orders %}
+    <div style="text-align: center; padding: 2rem; color: #999;">発注履歴はありません</div>
+    {% endif %}
+</div>
+{% endblock %}

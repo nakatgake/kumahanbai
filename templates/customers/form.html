@@ -44,8 +44,50 @@
             <label>WebサイトURL</label>
             <input type="url" name="website_url" value="{{ customer.website_url if customer else '' }}" placeholder="https://example.com">
         </div>
+
+        <!-- 代理店設定 -->
+        <div style="margin-top: 2rem; padding: 1.5rem; border: 1px solid #b3e5fc; border-radius: 8px; background-color: #e1f5fe;">
+            <h3 style="color: #0277bd; margin-bottom: 1rem; font-size: 1.1rem;">🏢 代理店設定</h3>
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                    <input type="checkbox" name="is_agency" value="true" 
+                           {% if customer and customer.is_agency %}checked{% endif %}
+                           onchange="toggleAgencyFields(this)" style="width: auto;">
+                    この顧客を代理店として登録する
+                </label>
+            </div>
+            <div id="agencyFields" style="{% if not customer or not customer.is_agency %}display: none;{% endif %}">
+                <div class="form-group">
+                    <label>ログインID</label>
+                    <input type="text" name="login_id" value="{{ customer.login_id if customer and customer.login_id else '' }}" placeholder="代理店用ログインID">
+                </div>
+                <div class="form-group">
+                    <label>パスワード <span style="font-size: 0.8rem; color: #666;">（代理店がログイン時に使用）</span></label>
+                    <input type="text" name="agency_password" id="agencyPassword"
+                           value="{{ customer.agency_password if customer and customer.agency_password else '' }}" 
+                           placeholder="代理店用パスワード">
+                </div>
+                {% if customer and customer.is_agency %}
+                <div style="margin-top: 0.5rem; padding: 0.8rem; background: #fff3e0; border-radius: 6px; font-size: 0.85rem;">
+                    <strong>現在のパスワード:</strong> {{ customer.agency_password if customer.agency_password else '未設定' }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
         <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">保存する</button>
     </form>
+
+    {% if customer and customer.is_agency %}
+    <div style="margin-top: 1.5rem; padding: 1.5rem; border: 1px solid #fff3e0; border-radius: 8px; background-color: #fff8e1;">
+        <h3 style="color: #f57c00; margin-bottom: 1rem; font-size: 1.1rem;">🔑 パスワード再発行</h3>
+        <p style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">代理店がパスワードを忘れた場合、ランダムな新しいパスワードを発行できます。</p>
+        <form action="/customers/{{ customer.id }}/reset-agency-password" method="post">
+            <button type="submit" class="btn btn-warning" onclick="return confirm('パスワードを再発行しますか？現在のパスワードは無効になります。')">パスワードを再発行する</button>
+        </form>
+    </div>
+    {% endif %}
+
     {% if customer %}
     <div style="margin-top: 3rem; padding: 1.5rem; border: 1px solid #ffcccb; border-radius: 8px; background-color: #fff5f5;">
         <h3 style="color: #e74c3c; margin-bottom: 1rem; font-size: 1.1rem;">⚠️ 危険な操作</h3>
@@ -56,4 +98,10 @@
     </div>
     {% endif %}
 </div>
+
+<script>
+function toggleAgencyFields(checkbox) {
+    document.getElementById('agencyFields').style.display = checkbox.checked ? 'block' : 'none';
+}
+</script>
 {% endblock %}

@@ -1,0 +1,51 @@
+{% extends "agency/layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>商品一覧</h2>
+</div>
+
+<div class="card" style="margin-bottom: 1.5rem;">
+    <form action="/agency/products" method="get" style="display: flex; gap: 1rem; align-items: end;">
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+            <input type="text" name="q" value="{{ search_query }}" placeholder="商品名・コードで検索..." style="margin-bottom: 0;">
+        </div>
+        <button type="submit" class="btn btn-primary" style="background: #1a5276;">検索</button>
+        {% if search_query %}
+        <a href="/agency/products" class="btn btn-secondary">クリア</a>
+        {% endif %}
+    </form>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>商品コード</th>
+                <th>商品名</th>
+                <th>価格（税抜）</th>
+                <th>在庫</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in products %}
+            <tr>
+                <td>{{ p.code }}</td>
+                <td>{{ p.name }}</td>
+                <td style="font-weight: 600; color: #1a5276;">¥{{ '{:,.0f}'.format(p.price) }}</td>
+                <td>
+                    {% if p.stock_quantity > 0 %}
+                    <span class="badge badge-success">{{ p.stock_quantity }}</span>
+                    {% else %}
+                    <span class="badge badge-danger">在庫切れ</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if not products %}
+    <div style="text-align: center; padding: 2rem; color: #999;">商品が見つかりません</div>
+    {% endif %}
+</div>
+{% endblock %}

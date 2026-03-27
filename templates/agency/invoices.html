@@ -1,0 +1,43 @@
+{% extends "agency/layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>請求書一覧</h2>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>請求番号</th>
+                <th>発行日</th>
+                <th>支払期限</th>
+                <th>金額（税抜）</th>
+                <th>状態</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for inv in invoices %}
+            <tr>
+                <td>{{ inv.invoice_number }}</td>
+                <td>{{ inv.issue_date.strftime('%Y/%m/%d') if inv.issue_date else '-' }}</td>
+                <td>{{ inv.due_date.strftime('%Y/%m/%d') if inv.due_date else '-' }}</td>
+                <td style="font-weight: 600;">¥{{ '{:,.0f}'.format(inv.total_amount) }}</td>
+                <td>
+                    <span class="badge {% if inv.status.value == '入金済み' %}badge-paid{% elif inv.status.value == '発行済み' %}badge-info{% else %}badge-unpaid{% endif %}">
+                        {{ inv.status.value }}
+                    </span>
+                </td>
+                <td>
+                    <a href="/agency/invoices/{{ inv.id }}/print" class="btn btn-sm btn-info" target="_blank">印刷・ダウンロード</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if not invoices %}
+    <div style="text-align: center; padding: 2rem; color: #999;">請求書はありません</div>
+    {% endif %}
+</div>
+{% endblock %}

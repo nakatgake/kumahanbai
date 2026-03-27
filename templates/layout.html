@@ -20,7 +20,13 @@
             <li><a href="/quotations" class="{{ 'active' if active_page == 'quotations' else '' }}">見積管理</a></li>
             <li><a href="/orders" class="{{ 'active' if active_page == 'orders' else '' }}">受注管理</a></li>
             <li><a href="/invoices" class="{{ 'active' if active_page == 'invoices' else '' }}">入金・請求書発行</a></li>
-            <li><a href="/settings" class="{{ 'active' if active_page == 'settings' else '' }}">バックアップ・復元</a></li>
+            <li style="border-top: 1px solid rgba(255,255,255,0.1); margin-top: 0.5rem; padding-top: 0.5rem;">
+                <a href="/agency-orders" class="{{ 'active' if active_page == 'agency_orders' else '' }}">📦 代理店発注</a>
+            </li>
+            <li><a href="/admin/notifications" class="{{ 'active' if active_page == 'notifications' else '' }}">🔔 通知</a></li>
+            <li style="border-top: 1px solid rgba(255,255,255,0.1); margin-top: 0.5rem; padding-top: 0.5rem;">
+                <a href="/settings" class="{{ 'active' if active_page == 'settings' else '' }}">バックアップ・復元</a>
+            </li>
             <li><a href="/users" class="{{ 'active' if active_page == 'users' else '' }}">ユーザー管理</a></li>
         </ul>
         <div class="user-info" style="margin-top: auto; padding: 1.5rem; border-top: 1px solid rgba(255,255,255,0.1); font-size: 0.9rem;">

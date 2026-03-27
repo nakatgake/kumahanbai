@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>代理店ポータル - （株）熊ノ護化研</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@2.0.0"></script>
+    <style>
+        .sidebar { background: linear-gradient(180deg, #1a5276 0%, #154360 100%); }
+        .sidebar h1 { font-size: 1.3rem; }
+        .agency-badge {
+            background: #e74c3c;
+            color: white;
+            border-radius: 50%;
+            padding: 2px 7px;
+            font-size: 0.75rem;
+            margin-left: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <h1 style="line-height: 1.4;">
+            <div style="font-size: 1.1rem;">（株）熊ノ護化研</div>
+            <div style="font-size: 0.85rem; font-weight: normal; opacity: 0.9;">代理店ポータル</div>
+        </h1>
+        <ul class="nav-links">
+            <li><a href="/agency/" class="{{ 'active' if active_page == 'agency_dashboard' else '' }}">ダッシュボード</a></li>
+            <li><a href="/agency/products" class="{{ 'active' if active_page == 'agency_products' else '' }}">商品一覧</a></li>
+            <li><a href="/agency/order/new" class="{{ 'active' if active_page == 'agency_orders' else '' }}">発注する</a></li>
+            <li><a href="/agency/orders" class="{{ 'active' if active_page == 'agency_orders' else '' }}">発注履歴</a></li>
+            <li><a href="/agency/quotations" class="{{ 'active' if active_page == 'agency_quotations' else '' }}">見積書一覧</a></li>
+            <li><a href="/agency/invoices" class="{{ 'active' if active_page == 'agency_invoices' else '' }}">請求書一覧</a></li>
+            <li><a href="/agency/notifications" class="{{ 'active' if active_page == 'agency_notifications' else '' }}">通知</a></li>
+        </ul>
+        <div class="user-info" style="margin-top: auto; padding: 1.5rem; border-top: 1px solid rgba(255,255,255,0.1); font-size: 0.9rem;">
+            <div style="color: #bdc3c7; margin-bottom: 0.5rem;">ログイン中:</div>
+            <div style="font-weight: 600; margin-bottom: 0.5rem;">{{ agency.company if agency else 'ゲスト' }}</div>
+            <a href="/agency/change-password" style="display: block; color: #5dade2; text-decoration: none; font-size: 0.85rem; margin-bottom: 1rem;">パスワード変更</a>
+            <a href="/agency/logout" class="btn btn-sm" style="width: 100%; text-align: center; display: block; background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid #e74c3c; text-decoration: none;">ログアウト</a>
+        </div>
+    </div>
+    <div class="main-content">
+        {% if message %}
+        <div style="padding: 1rem; margin-bottom: 1rem; border-radius: 8px; background: #e1f5fe; color: #0288d1; border: 1px solid #b3e5fc;">
+            {{ message }}
+        </div>
+        {% endif %}
+        {% if error %}
+        <div style="padding: 1rem; margin-bottom: 1rem; border-radius: 8px; background: #ffebee; color: #c62828; border: 1px solid #ffcdd2;">
+            {{ error }}
+        </div>
+        {% endif %}
+        <div class="content-body">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+</body>
+</html>

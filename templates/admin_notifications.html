@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>通知一覧</h2>
+    <form action="/admin/generate-monthly-invoices" method="post" style="display: inline;">
+        <button type="submit" class="btn btn-warning" onclick="return confirm('前月分の月次請求書を生成しますか？')">月次請求書を生成</button>
+    </form>
+</div>
+
+<div class="card">
+    {% if notifications %}
+    {% for n in notifications %}
+    <div style="padding: 1rem; border-bottom: 1px solid #eee; {% if not n.is_read %}background: #f0f7ff;{% endif %}">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong style="color: #2c3e50;">{{ n.title }}</strong>
+            <span style="font-size: 0.8rem; color: #999;">{{ n.created_at.strftime('%Y/%m/%d %H:%M') if n.created_at else '' }}</span>
+        </div>
+        <p style="margin-top: 0.5rem; color: #555;">{{ n.message }}</p>
+        {% if n.link %}
+        <a href="{{ n.link }}" style="font-size: 0.85rem; color: #3498db;">確認する →</a>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div style="text-align: center; padding: 2rem; color: #999;">通知はありません</div>
+    {% endif %}
+</div>
+{% endblock %}

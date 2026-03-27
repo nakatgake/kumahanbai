@@ -17,6 +17,8 @@ from fastapi.responses import StreamingResponse
 from passlib.context import CryptContext
 from itsdangerous import URLSafeSerializer
 from fastapi import HTTPException
+import smtplib
+from email.message import EmailMessage
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
@@ -85,6 +87,31 @@ def migrate_db():
     if 'memo' not in cols:
         print("Migrating invoices: adding memo...")
         cursor.execute("ALTER TABLE invoices ADD COLUMN memo TEXT")
+    
+    # Check if customer agency fields exist
+    cursor.execute("PRAGMA table_info(customers)")
+    cols = [row[1] for row in cursor.fetchall()]
+    if 'is_agency' not in cols:
+        print("Migrating customers: adding is_agency column...")
+        cursor.execute("ALTER TABLE customers ADD COLUMN is_agency BOOLEAN DEFAULT 0")
+    if 'login_id' not in cols:
+        print("Migrating customers: adding login_id column...")
+        cursor.execute("ALTER TABLE customers ADD COLUMN login_id VARCHAR")
+    if 'agency_password' not in cols:
+        print("Migrating customers: adding agency_password column...")
+        cursor.execute("ALTER TABLE customers ADD COLUMN agency_password VARCHAR")
+    
+    # Check if system_settings table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
+    if not cursor.fetchone():
+        print("Creating system_settings table...")
+        cursor.execute("""
+            CREATE TABLE system_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key VARCHAR UNIQUE,
+                value VARCHAR
+            )
+        """)
     
     conn.commit()
     conn.close()
@@ -269,13 +296,19 @@ async def create_customer(
     address: str = Form(""),
     website_url: str = Form(""),
     rank: str = Form("RETAIL"),
+    is_agency: bool = Form(False),
+    login_id: Optional[str] = Form(None),
+    agency_password: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
     customer = models.Customer(
         name=name, company=company, zip_code=zip_code, 
         email=email, phone=phone, address=address, website_url=website_url,
-        rank=models.CustomerRank[rank]
+        rank=models.CustomerRank[rank],
+        is_agency=is_agency,
+        login_id=login_id if is_agency and login_id else None,
+        agency_password=agency_password if is_agency and agency_password else None
     )
     db.add(customer)
     db.commit()
@@ -308,6 +341,9 @@ async def update_customer(
     address: str = Form(""),
     website_url: str = Form(""),
     rank: str = Form("RETAIL"),
+    is_agency: bool = Form(False),
+    login_id: Optional[str] = Form(None),
+    agency_password: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -321,6 +357,9 @@ async def update_customer(
         customer.address = address
         customer.website_url = website_url
         customer.rank = models.CustomerRank[rank]
+        customer.is_agency = is_agency
+        customer.login_id = login_id if is_agency and login_id else None
+        customer.agency_password = agency_password if is_agency and agency_password else None
         db.commit()
     return RedirectResponse(url="/customers", status_code=303)
 
@@ -1423,6 +1462,97 @@ async def export_invoices_excel(
     output.seek(0)
     
     filename = f"invoices_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
+# --- System Settings (Admin) ---
+@app.get("/admin/settings", response_class=HTMLResponse)
+async def admin_settings(request: Request, db: Session = Depends(get_db)):
+    user = await get_active_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    settings = db.query(models.SystemSetting).all()
+    settings_dict = {s.key: s.value for s in settings}
+    
+    return templates.TemplateResponse("admin_settings.html", {
+        "request": request,
+        "user": user,
+        "settings": settings_dict,
+        "active_page": "settings"
+    })
+
+@app.post("/admin/settings")
+async def admin_settings_save(
+    request: Request,
+    smtp_host: str = Form(""),
+    smtp_port: str = Form(""),
+    smtp_user: str = Form(""),
+    smtp_pass: str = Form(""),
+    smtp_from: str = Form(""),
+    notification_email: str = Form(""),
+    db: Session = Depends(get_db)
+):
+    user = await get_active_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    data = {
+        "smtp_host": smtp_host,
+        "smtp_port": smtp_port,
+        "smtp_user": smtp_user,
+        "smtp_pass": smtp_pass,
+        "smtp_from": smtp_from,
+        "notification_email": notification_email
+    }
+    
+    for key, value in data.items():
+        setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == key).first()
+        if setting:
+            setting.value = value
+        else:
+            db.add(models.SystemSetting(key=key, value=value))
+    
+    db.commit()
+    return RedirectResponse(url="/admin/settings", status_code=303)
+
+async def send_order_notification_email(order: models.AgencyOrder, db: Session):
+    settings = db.query(models.SystemSetting).all()
+    s = {s.key: s.value for s in settings}
+    
+    target = s.get("notification_email")
+    if not target or not s.get("smtp_host"):
+        print("Email notification skipped: no settings")
+        return
+
+    msg = EmailMessage()
+    content = f"""代理店：{order.customer.company} 様より新規発注がありました。
+
+【受注番号】: {order.order_number}
+【発注日時】: {order.order_date.strftime('%Y/%m/%d %H:%M') if order.order_date else '-'}
+【合計金額】: ¥{'{:,.0f}'.format(order.total_amount)} (税抜)
+
+詳細は管理画面の「代理店発注」よりご確認ください。
+"""
+    msg.set_content(content)
+    msg['Subject'] = f"【代理店サイト】新規発注のお知らせ ({order.customer.company}様)"
+    msg['From'] = s.get("smtp_from")
+    msg['To'] = target
+
+    try:
+        # SMTP configuration
+        smtp_host = s.get("smtp_host")
+        smtp_port = int(s.get("smtp_port") or 587)
+        smtp_user = s.get("smtp_user")
+        smtp_pass = s.get("smtp_pass")
+
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            if smtp_port == 587:
+                server.starttls()
+            if smtp_user and smtp_pass:
+                server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+        print(f"Email sent to {target}")
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+
     return StreamingResponse(
         output, 
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1815,6 +1945,661 @@ async def init_admin(db: Session = Depends(get_db)):
         db.commit()
         return RedirectResponse(url="/login", status_code=303)
     return RedirectResponse(url="/login", status_code=303)
+
+
+# ============================================================
+# 代理店ポータル (Agency Portal)
+# ============================================================
+
+agency_serializer = URLSafeSerializer(SECRET_KEY + "-agency")
+
+async def get_current_agency(request: Request, db: Session = Depends(get_db)):
+    """代理店セッションから現在のログイン代理店を取得"""
+    session_token = request.cookies.get("agency_session")
+    if not session_token:
+        return None
+    try:
+        login_id = agency_serializer.loads(session_token)
+        customer = db.query(models.Customer).filter(
+            models.Customer.login_id == login_id,
+            models.Customer.is_agency == True
+        ).first()
+        return customer
+    except:
+        return None
+
+class NotAgencyAuthenticatedException(Exception):
+    pass
+
+@app.exception_handler(NotAgencyAuthenticatedException)
+async def agency_auth_exception_handler(request: Request, exc: NotAgencyAuthenticatedException):
+    return RedirectResponse(url="/agency/login")
+
+async def get_active_agency(request: Request, db: Session = Depends(get_db)):
+    agency = await get_current_agency(request, db)
+    if not agency:
+        raise NotAgencyAuthenticatedException()
+    return agency
+
+def get_price_for_rank(product, rank):
+    """顧客ランクに応じた価格を取得"""
+    rank_price_map = {
+        models.CustomerRank.RETAIL: product.price_retail,
+        models.CustomerRank.RANK_A: product.price_a,
+        models.CustomerRank.RANK_B: product.price_b,
+        models.CustomerRank.RANK_C: product.price_c,
+        models.CustomerRank.RANK_D: product.price_d,
+        models.CustomerRank.RANK_E: product.price_e,
+    }
+    price = rank_price_map.get(rank, product.price_retail)
+    return price if price and price > 0 else product.price_retail
+
+# --- Agency Login ---
+@app.get("/agency/login", response_class=HTMLResponse)
+async def agency_login_page(request: Request):
+    return templates.TemplateResponse(request=request, name="agency/login.html", context={"request": request})
+
+@app.post("/agency/login")
+async def agency_login(
+    request: Request,
+    login_id: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    customer = db.query(models.Customer).filter(
+        models.Customer.login_id == login_id,
+        models.Customer.is_agency == True
+    ).first()
+    
+    if not customer or customer.agency_password != password:
+        return templates.TemplateResponse(request=request, name="agency/login.html", context={
+            "request": request,
+            "error": "ログインIDまたはパスワードが正しくありません"
+        })
+    
+    token = agency_serializer.dumps(login_id)
+    response = RedirectResponse(url="/agency/", status_code=303)
+    response.set_cookie(key="agency_session", value=token, httponly=True)
+    return response
+
+@app.get("/agency/logout")
+async def agency_logout():
+    response = RedirectResponse(url="/agency/login")
+    response.delete_cookie("agency_session")
+    return response
+
+# --- Agency Dashboard ---
+@app.get("/agency/", response_class=HTMLResponse)
+async def agency_dashboard(
+    request: Request, 
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    # 代理店の注文件数
+    order_count = db.query(models.AgencyOrder).filter(models.AgencyOrder.customer_id == agency.id).count()
+    # 未処理の注文
+    pending_count = db.query(models.AgencyOrder).filter(
+        models.AgencyOrder.customer_id == agency.id,
+        models.AgencyOrder.status == "未処理"
+    ).count()
+    # 代理店への通知
+    notifications = db.query(models.Notification).filter(
+        models.Notification.target_type == "agency",
+        models.Notification.target_id == agency.id,
+        models.Notification.is_read == False
+    ).order_by(models.Notification.id.desc()).limit(10).all()
+    # 代理店向け請求書（Invoiceのうち、この代理店）
+    invoices = db.query(models.Invoice).join(models.Order).join(models.Quotation).filter(
+        models.Quotation.customer_id == agency.id
+    ).order_by(models.Invoice.id.desc()).limit(5).all()
+    
+    return templates.TemplateResponse(request=request, name="agency/dashboard.html", context={
+        "request": request,
+        "agency": agency,
+        "active_page": "agency_dashboard",
+        "order_count": order_count,
+        "pending_count": pending_count,
+        "notifications": notifications,
+        "recent_invoices": invoices
+    })
+
+# --- Agency Products (商品一覧) ---
+@app.get("/agency/products", response_class=HTMLResponse)
+async def agency_products(
+    request: Request,
+    q: str = "",
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    query = db.query(models.Product)
+    if q:
+        query = query.filter(
+            (models.Product.name.contains(q)) | (models.Product.code.contains(q))
+        )
+    products = query.order_by(models.Product.id.desc()).all()
+    
+    # ランクに応じた価格をセット
+    products_with_price = []
+    for p in products:
+        price = get_price_for_rank(p, agency.rank)
+        products_with_price.append({
+            "id": p.id,
+            "code": p.code,
+            "name": p.name,
+            "price": price,
+            "stock_quantity": p.stock_quantity
+        })
+    
+    return templates.TemplateResponse(request=request, name="agency/products.html", context={
+        "request": request,
+        "agency": agency,
+        "active_page": "agency_products",
+        "products": products_with_price,
+        "search_query": q
+    })
+
+# --- Agency Order (発注) ---
+@app.get("/agency/order/new", response_class=HTMLResponse)
+async def agency_new_order(
+    request: Request,
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    products = db.query(models.Product).order_by(models.Product.id.desc()).all()
+    products_with_price = []
+    for p in products:
+        price = get_price_for_rank(p, agency.rank)
+        products_with_price.append({
+            "id": p.id,
+            "code": p.code,
+            "name": p.name,
+            "price": price,
+            "stock_quantity": p.stock_quantity
+        })
+    
+    return templates.TemplateResponse(request=request, name="agency/order_form.html", context={
+        "request": request,
+        "agency": agency,
+        "active_page": "agency_orders",
+        "products": products_with_price
+    })
+
+@app.post("/agency/order/new")
+async def agency_create_order(
+    request: Request,
+    memo: str = Form(""),
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    form_data = await request.form()
+    product_ids = form_data.getlist("product_id[]")
+    quantities = form_data.getlist("quantity[]")
+    
+    if not product_ids or all(int(q) == 0 for q in quantities):
+        return HTMLResponse(content="<script>alert('商品を1つ以上選択してください'); history.back();</script>", status_code=400)
+    
+    order_number = f"AG-{agency.id}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+    
+    agency_order = models.AgencyOrder(
+        customer_id=agency.id,
+        order_number=order_number,
+        memo=memo,
+        status="未処理"
+    )
+    db.add(agency_order)
+    db.flush()
+    
+    total = 0
+    for p_id, qty in zip(product_ids, quantities):
+        qty = int(qty)
+        if qty <= 0:
+            continue
+        product = db.query(models.Product).get(int(p_id))
+        if not product:
+            continue
+        price = get_price_for_rank(product, agency.rank)
+        subtotal = qty * price
+        
+        item = models.AgencyOrderItem(
+            agency_order_id=agency_order.id,
+            product_id=product.id,
+            product_name=product.name,
+            quantity=qty,
+            unit_price=price,
+            subtotal=subtotal
+        )
+        db.add(item)
+        total += subtotal
+    
+    agency_order.total_amount = total
+    
+    # 当社への通知
+    notification = models.Notification(
+        target_type="admin",
+        target_id=None,
+        title="新規代理店発注",
+        message=f"{agency.company}様から新規発注（{order_number}）がありました。合計: ¥{total:,.0f}",
+        link=f"/agency-orders"
+    )
+    db.add(notification)
+    
+    db.commit()
+    return RedirectResponse(url="/agency/orders", status_code=303)
+
+# --- Agency Order History (発注履歴) ---
+@app.get("/agency/orders", response_class=HTMLResponse)
+async def agency_order_history(
+    request: Request,
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    orders = db.query(models.AgencyOrder).filter(
+        models.AgencyOrder.customer_id == agency.id
+    ).order_by(models.AgencyOrder.id.desc()).all()
+    
+    return templates.TemplateResponse(request=request, name="agency/orders.html", context={
+        "request": request,
+        "agency": agency,
+        "active_page": "agency_orders",
+        "orders": orders
+    })
+
+@app.get("/agency/orders/{order_id}", response_class=HTMLResponse)
+async def agency_order_detail(
+    order_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    order = db.query(models.AgencyOrder).filter(
+        models.AgencyOrder.id == order_id,
+        models.AgencyOrder.customer_id == agency.id
+    ).first()
+    if not order:
+        return RedirectResponse(url="/agency/orders", status_code=303)
+    
+    return templates.TemplateResponse(request=request, name="agency/order_detail.html", context={
+        "request": request,
+        "agency": agency,
+        "active_page": "agency_orders",
+        "order": order
+    })
+
+# --- Agency Invoices (請求書一覧) ---
+@app.get("/agency/invoices", response_class=HTMLResponse)
+async def agency_invoices(
+    request: Request,
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    invoices = db.query(models.Invoice).join(models.Order).join(models.Quotation).filter(
+        models.Quotation.customer_id == agency.id
+    ).order_by(models.Invoice.id.desc()).all()
+    
+    return templates.TemplateResponse(request=request, name="agency/invoices.html", context={
+        "request": request,
+        "agency": agency,
+        "active_page": "agency_invoices",
+        "invoices": invoices
+    })
+
+@app.get("/agency/invoices/{invoice_id}/print", response_class=HTMLResponse)
+async def agency_print_invoice(
+    invoice_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    invoice = db.query(models.Invoice).join(models.Order).join(models.Quotation).filter(
+        models.Invoice.id == invoice_id,
+        models.Quotation.customer_id == agency.id
+    ).first()
+    if not invoice:
+        return RedirectResponse(url="/agency/invoices", status_code=303)
+    
+    return templates.TemplateResponse(request=request, name="print_layout.html", context={
+        "request": request,
+        "doc_type": "invoice",
+        "doc": invoice,
+        "user": None
+    })
+
+# --- Agency Quotations (見積書一覧) ---
+@app.get("/agency/quotations", response_class=HTMLResponse)
+async def agency_quotations(
+    request: Request,
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    quotations = db.query(models.Quotation).filter(
+        models.Quotation.customer_id == agency.id
+    ).order_by(models.Quotation.id.desc()).all()
+    
+    return templates.TemplateResponse(request=request, name="agency/quotations.html", context={
+        "request": request,
+        "agency": agency,
+        "active_page": "agency_quotations",
+        "quotations": quotations
+    })
+
+@app.get("/agency/quotations/{quote_id}/print", response_class=HTMLResponse)
+async def agency_print_quotation(
+    quote_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    quote = db.query(models.Quotation).filter(
+        models.Quotation.id == quote_id,
+        models.Quotation.customer_id == agency.id
+    ).first()
+    if not quote:
+        return RedirectResponse(url="/agency/quotations", status_code=303)
+    
+    return templates.TemplateResponse(request=request, name="print_layout.html", context={
+        "request": request,
+        "doc_type": "quotation",
+        "doc": quote,
+        "user": None
+    })
+
+# --- Agency Password Change ---
+@app.get("/agency/change-password", response_class=HTMLResponse)
+async def agency_change_password_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    return templates.TemplateResponse(request=request, name="agency/change_password.html", context={
+        "request": request,
+        "agency": agency,
+        "active_page": "agency_password"
+    })
+
+@app.post("/agency/change-password")
+async def agency_change_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    if agency.agency_password != current_password:
+        return templates.TemplateResponse(request=request, name="agency/change_password.html", context={
+            "request": request,
+            "agency": agency,
+            "active_page": "agency_password",
+            "error": "現在のパスワードが正しくありません。"
+        })
+    
+    if new_password != confirm_password:
+        return templates.TemplateResponse(request=request, name="agency/change_password.html", context={
+            "request": request,
+            "agency": agency,
+            "active_page": "agency_password",
+            "error": "新しいパスワードと確認用パスワードが一致しません。"
+        })
+    
+    if len(new_password) < 4:
+        return templates.TemplateResponse(request=request, name="agency/change_password.html", context={
+            "request": request,
+            "agency": agency,
+            "active_page": "agency_password",
+            "error": "パスワードは4文字以上で設定してください。"
+        })
+    
+    agency.agency_password = new_password
+    db.commit()
+    
+    return templates.TemplateResponse(request=request, name="agency/change_password.html", context={
+        "request": request,
+        "agency": agency,
+        "active_page": "agency_password",
+        "success": "パスワードを正常に変更しました。"
+    })
+
+# --- Agency Notifications ---
+@app.get("/agency/notifications", response_class=HTMLResponse)
+async def agency_notifications(
+    request: Request,
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    notifications = db.query(models.Notification).filter(
+        models.Notification.target_type == "agency",
+        models.Notification.target_id == agency.id
+    ).order_by(models.Notification.id.desc()).all()
+    
+    # 未読を既読にする
+    for n in notifications:
+        if not n.is_read:
+            n.is_read = True
+    db.commit()
+    
+    return templates.TemplateResponse(request=request, name="agency/notifications.html", context={
+        "request": request,
+        "agency": agency,
+        "active_page": "agency_notifications",
+        "notifications": notifications
+    })
+
+# --- Agency Product Search API ---
+@app.get("/agency/api/products/search")
+async def agency_search_products(
+    q: str = "",
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    products = db.query(models.Product).filter(
+        (models.Product.name.contains(q)) | (models.Product.code.contains(q))
+    ).order_by(models.Product.id.desc()).limit(10).all()
+    
+    html = ""
+    for p in products:
+        price = get_price_for_rank(p, agency.rank)
+        safe_name = p.name.replace("'", "\\'")
+        html += f'<div class="search-result" onclick="addProduct({p.id}, \'{safe_name}\', {price})">{p.name} ({p.code}) - ¥{price:,.0f}</div>'
+    return HTMLResponse(content=html if html else "<div>見つかりませんでした</div>")
+
+# ============================================================
+# 管理画面: 代理店発注一覧 + 通知
+# ============================================================
+
+@app.get("/agency-orders", response_class=HTMLResponse)
+async def admin_agency_orders(
+    request: Request,
+    q: str = "",
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    query = db.query(models.AgencyOrder).join(models.Customer)
+    if q:
+        query = query.filter(
+            (models.AgencyOrder.order_number.contains(q)) |
+            (models.Customer.company.contains(q))
+        )
+    orders = query.order_by(models.AgencyOrder.id.desc()).all()
+    
+    return templates.TemplateResponse(request=request, name="agency_orders_admin.html", context={
+        "request": request,
+        "active_page": "agency_orders",
+        "orders": orders,
+        "search_query": q,
+        "user": user
+    })
+
+@app.post("/agency-orders/{order_id}/process")
+async def admin_process_agency_order(
+    order_id: int,
+    status: str = Form(...),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    order = db.query(models.AgencyOrder).get(order_id)
+    if order:
+        order.status = status
+        # 代理店への通知
+        notification = models.Notification(
+            target_type="agency",
+            target_id=order.customer_id,
+            title="発注ステータス更新",
+            message=f"発注 {order.order_number} のステータスが「{status}」に更新されました。",
+            link="/agency/orders"
+        )
+        db.add(notification)
+        db.commit()
+    return RedirectResponse(url="/agency-orders", status_code=303)
+
+# パスワード再発行（管理画面から）
+@app.post("/customers/{customer_id}/reset-agency-password")
+async def reset_agency_password(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    import random
+    import string
+    customer = db.query(models.Customer).get(customer_id)
+    if customer and customer.is_agency:
+        new_password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+        customer.agency_password = new_password
+        db.commit()
+    return RedirectResponse(url=f"/customers/edit/{customer_id}", status_code=303)
+
+# 管理画面の通知バッジ用API
+@app.get("/api/admin/notification-count")
+async def admin_notification_count(db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    count = db.query(models.Notification).filter(
+        models.Notification.target_type == "admin",
+        models.Notification.is_read == False
+    ).count()
+    return {"count": count}
+
+@app.get("/admin/notifications", response_class=HTMLResponse)
+async def admin_notifications(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    notifications = db.query(models.Notification).filter(
+        models.Notification.target_type == "admin"
+    ).order_by(models.Notification.id.desc()).limit(50).all()
+    
+    # 未読を既読にする
+    for n in notifications:
+        if not n.is_read:
+            n.is_read = True
+    db.commit()
+    
+    return templates.TemplateResponse(request=request, name="admin_notifications.html", context={
+        "request": request,
+        "active_page": "notifications",
+        "notifications": notifications,
+        "user": user
+    })
+
+# ============================================================
+# 月次請求書自動発行スクリプト（手動実行とスケジュール用エンドポイント）
+# ============================================================
+@app.post("/admin/generate-monthly-invoices")
+async def generate_monthly_invoices(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    """前月の代理店発注をまとめて請求書を生成する"""
+    now = datetime.datetime.now()
+    # 前月の期間
+    first_of_current = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    last_month_end = first_of_current - datetime.timedelta(seconds=1)
+    last_month_start = last_month_end.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    
+    # 代理店一覧
+    agencies = db.query(models.Customer).filter(models.Customer.is_agency == True).all()
+    generated_count = 0
+    
+    for agency in agencies:
+        # 前月の処理済み発注を集計
+        orders = db.query(models.AgencyOrder).filter(
+            models.AgencyOrder.customer_id == agency.id,
+            models.AgencyOrder.status == "処理済み",
+            models.AgencyOrder.order_date >= last_month_start,
+            models.AgencyOrder.order_date <= last_month_end
+        ).all()
+        
+        if not orders:
+            continue
+        
+        total = sum(o.total_amount for o in orders)
+        month_str = last_month_start.strftime('%Y%m')
+        inv_number = f"AGINV-{agency.id}-{month_str}"
+        
+        # 既に同月の請求書があったらスキップ
+        existing = db.query(models.Invoice).filter(models.Invoice.invoice_number == inv_number).first()
+        if existing:
+            continue
+        
+        # まず代理店発注用の見積＋受注をシャドウ作成
+        shadow_quote = models.Quotation(
+            customer_id=agency.id,
+            quote_number=f"Q-{inv_number}",
+            issue_date=first_of_current,
+            expiry_date=first_of_current + datetime.timedelta(days=30),
+            total_amount=total,
+            status=models.QuoteStatus.ORDERED,
+            memo=f"{last_month_start.strftime('%Y年%m月')}分 代理店月次請求"
+        )
+        db.add(shadow_quote)
+        db.flush()
+        
+        # 明細をまとめる
+        for order in orders:
+            for item in order.items:
+                qi = models.QuotationItem(
+                    quotation_id=shadow_quote.id,
+                    product_id=item.product_id,
+                    description=f"[{order.order_number}] {item.product_name}",
+                    quantity=item.quantity,
+                    unit_price=item.unit_price,
+                    subtotal=item.subtotal
+                )
+                db.add(qi)
+        
+        shadow_order = models.Order(
+            quotation_id=shadow_quote.id,
+            order_number=f"ORD-{inv_number}",
+            order_date=first_of_current,
+            total_amount=total,
+            status=models.OrderStatus.COMPLETED,
+            memo=f"{last_month_start.strftime('%Y年%m月')}分 代理店月次請求"
+        )
+        db.add(shadow_order)
+        db.flush()
+        
+        invoice = models.Invoice(
+            order_id=shadow_order.id,
+            invoice_number=inv_number,
+            issue_date=first_of_current + datetime.timedelta(days=1),  # 翌月2日
+            due_date=first_of_current + datetime.timedelta(days=30),
+            total_amount=total,
+            status=models.InvoiceStatus.UNPAID,
+            memo=f"{last_month_start.strftime('%Y年%m月')}分 月次集計請求書"
+        )
+        db.add(invoice)
+        
+        # 代理店への通知
+        notification = models.Notification(
+            target_type="agency",
+            target_id=agency.id,
+            title="月次請求書発行",
+            message=f"{last_month_start.strftime('%Y年%m月')}分の請求書（{inv_number}）が発行されました。金額: ¥{total:,.0f}",
+            link="/agency/invoices"
+        )
+        db.add(notification)
+        generated_count += 1
+    
+    db.commit()
+    return RedirectResponse(url=f"/admin/notifications?generated={generated_count}", status_code=303)
 
 
 if __name__ == "__main__":

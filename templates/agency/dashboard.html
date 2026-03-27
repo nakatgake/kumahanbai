@@ -1,0 +1,90 @@
+{% extends "agency/layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>ダッシュボード</h2>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+    <div class="card" style="text-align: center; border-left: 4px solid #3498db;">
+        <div style="font-size: 2rem; font-weight: bold; color: #3498db;">{{ order_count }}</div>
+        <div style="color: #7f8c8d;">総発注数</div>
+    </div>
+    <div class="card" style="text-align: center; border-left: 4px solid #f39c12;">
+        <div style="font-size: 2rem; font-weight: bold; color: #f39c12;">{{ pending_count }}</div>
+        <div style="color: #7f8c8d;">処理中の発注</div>
+    </div>
+    <div class="card" style="text-align: center; border-left: 4px solid #27ae60;">
+        <div style="font-size: 2rem; font-weight: bold; color: #27ae60;">{{ recent_invoices|length }}</div>
+        <div style="color: #7f8c8d;">最近の請求書</div>
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+    <!-- クイック操作 -->
+    <div class="card">
+        <h3 style="margin-bottom: 1rem; color: #2c3e50;">クイック操作</h3>
+        <div style="display: flex; flex-direction: column; gap: 0.8rem;">
+            <a href="/agency/order/new" class="btn btn-primary" style="text-align: center; background: #1a5276;">新規発注する</a>
+            <a href="/agency/products" class="btn btn-info" style="text-align: center;">商品一覧を見る</a>
+            <a href="/agency/invoices" class="btn btn-warning" style="text-align: center;">請求書一覧</a>
+        </div>
+    </div>
+
+    <!-- 通知 -->
+    <div class="card">
+        <h3 style="margin-bottom: 1rem; color: #2c3e50;">
+            お知らせ
+            {% if notifications %}
+            <span class="badge badge-danger" style="font-size: 0.8rem;">{{ notifications|length }}件</span>
+            {% endif %}
+        </h3>
+        {% if notifications %}
+        <ul style="list-style: none; padding: 0;">
+            {% for n in notifications %}
+            <li style="padding: 0.6rem 0; border-bottom: 1px solid #eee; font-size: 0.9rem;">
+                <strong>{{ n.title }}</strong><br>
+                <span style="color: #666;">{{ n.message }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        <a href="/agency/notifications" style="display: block; margin-top: 0.5rem; font-size: 0.85rem; color: #3498db;">すべて表示 →</a>
+        {% else %}
+        <p style="color: #999; font-size: 0.9rem;">新しいお知らせはありません</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- 最近の請求書 -->
+{% if recent_invoices %}
+<div class="card" style="margin-top: 1.5rem;">
+    <h3 style="margin-bottom: 1rem; color: #2c3e50;">最近の請求書</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>請求番号</th>
+                <th>発行日</th>
+                <th>金額</th>
+                <th>状態</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for inv in recent_invoices %}
+            <tr>
+                <td>{{ inv.invoice_number }}</td>
+                <td>{{ inv.issue_date.strftime('%Y/%m/%d') if inv.issue_date else '-' }}</td>
+                <td>¥{{ '{:,.0f}'.format(inv.total_amount) }}</td>
+                <td>
+                    <span class="badge {% if inv.status.value == '入金済み' %}badge-paid{% elif inv.status.value == '発行済み' %}badge-info{% else %}badge-unpaid{% endif %}">
+                        {{ inv.status.value }}
+                    </span>
+                </td>
+                <td><a href="/agency/invoices/{{ inv.id }}/print" class="btn btn-sm btn-info" target="_blank">印刷</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}

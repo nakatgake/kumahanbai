@@ -1,0 +1,88 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>代理店発注一覧</h2>
+</div>
+
+<div class="card" style="margin-bottom: 1.5rem;">
+    <form action="/agency-orders" method="get" style="display: flex; gap: 1rem; align-items: end;">
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+            <input type="text" name="q" value="{{ search_query }}" placeholder="発注番号・会社名で検索..." style="margin-bottom: 0;">
+        </div>
+        <button type="submit" class="btn btn-primary">検索</button>
+        {% if search_query %}
+        <a href="/agency-orders" class="btn btn-secondary">クリア</a>
+        {% endif %}
+    </form>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>発注番号</th>
+                <th>代理店名</th>
+                <th>発注日</th>
+                <th>合計金額（税抜）</th>
+                <th>ステータス</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for order in orders %}
+            <tr>
+                <td>{{ order.order_number }}</td>
+                <td>{{ order.customer.company }}</td>
+                <td>{{ order.order_date.strftime('%Y/%m/%d') if order.order_date else '-' }}</td>
+                <td>¥{{ '{:,.0f}'.format(order.total_amount) }}</td>
+                <td>
+                    {% if order.status == '未処理' %}
+                    <span class="badge badge-warning">{{ order.status }}</span>
+                    {% elif order.status == '処理済み' %}
+                    <span class="badge badge-success">{{ order.status }}</span>
+                    {% else %}
+                    <span class="badge badge-danger">{{ order.status }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <form action="/agency-orders/{{ order.id }}/process" method="post" style="display: flex; gap: 0.3rem;">
+                        <select name="status" style="padding: 0.3rem; width: auto;">
+                            <option value="未処理" {% if order.status == '未処理' %}selected{% endif %}>未処理</option>
+                            <option value="処理済み" {% if order.status == '処理済み' %}selected{% endif %}>処理済み</option>
+                            <option value="キャンセル" {% if order.status == 'キャンセル' %}selected{% endif %}>キャンセル</option>
+                        </select>
+                        <button type="submit" class="btn btn-sm btn-primary">更新</button>
+                    </form>
+                </td>
+            </tr>
+            <!-- 明細展開 -->
+            <tr>
+                <td colspan="6" style="padding: 0;">
+                    <details style="padding: 0.5rem 1rem;">
+                        <summary style="cursor: pointer; color: #3498db; font-size: 0.85rem;">明細を表示</summary>
+                        <table style="margin: 0.5rem 0; font-size: 0.9rem;">
+                            <tr><th>商品名</th><th>単価</th><th>数量</th><th>小計</th></tr>
+                            {% for item in order.items %}
+                            <tr>
+                                <td>{{ item.product_name }}</td>
+                                <td>¥{{ '{:,.0f}'.format(item.unit_price) }}</td>
+                                <td>{{ item.quantity }}</td>
+                                <td>¥{{ '{:,.0f}'.format(item.subtotal) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                        {% if order.memo %}
+                        <p style="font-size: 0.85rem; color: #666;">備考: {{ order.memo }}</p>
+                        {% endif %}
+                    </details>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if not orders %}
+    <div style="text-align: center; padding: 2rem; color: #999;">代理店発注はありません</div>
+    {% endif %}
+</div>
+{% endblock %}
