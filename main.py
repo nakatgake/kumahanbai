@@ -124,6 +124,12 @@ def migrate_db():
     if 'is_read' not in cols:
         print("Migrating notifications: adding is_read column...")
         cursor.execute("ALTER TABLE notifications ADD COLUMN is_read BOOLEAN DEFAULT 0")
+    if 'related_type' not in cols:
+        print("Migrating notifications: adding related_type column...")
+        cursor.execute("ALTER TABLE notifications ADD COLUMN related_type VARCHAR")
+    if 'related_id' not in cols:
+        print("Migrating notifications: adding related_id column...")
+        cursor.execute("ALTER TABLE notifications ADD COLUMN related_id INTEGER")
     
     conn.commit()
     conn.close()
@@ -2187,7 +2193,9 @@ async def agency_create_order(
             target_id=None,
             title="新規代理店発注",
             message=f"{agency.company}様から新規発注（{order_number}）がありました。合計: ¥{total:,.0f}",
-            link=f"/agency-orders"
+            link="/agency-orders",
+            related_type="AgencyOrder",
+            related_id=agency_order.id
         )
         db.add(notification)
         
@@ -2462,7 +2470,9 @@ async def admin_process_agency_order(
             target_id=order.customer_id,
             title="発注ステータス更新",
             message=f"発注 {order.order_number} のステータスが「{status}」に更新されました。",
-            link="/agency/orders"
+            link="/agency/orders",
+            related_type="AgencyOrder",
+            related_id=order.id
         )
         db.add(notification)
         db.commit()
@@ -2748,18 +2758,66 @@ async def admin_notifications(
         models.Notification.target_type == "admin"
     ).order_by(models.Notification.id.desc()).limit(50).all()
     
-    # 未読を既読にする
+    # 関連エンティティの最新ステータスを取得
+    status_map = {}
     for n in notifications:
-        if not n.is_read:
-            n.is_read = True
-    db.commit()
+        if n.related_type == "AgencyOrder" and n.related_id:
+            order = db.query(models.AgencyOrder).get(n.related_id)
+            if order:
+                status_map[n.id] = order.status
+        elif n.related_type == "Invoice" and n.related_id:
+            inv = db.query(models.Invoice).get(n.related_id)
+            if inv:
+                status_map[n.id] = inv.status.name
     
     return templates.TemplateResponse(request=request, name="admin_notifications.html", context={
         "request": request,
         "active_page": "notifications",
         "notifications": notifications,
+        "status_map": status_map,
         "user": user
     })
+
+@app.get("/admin/notifications/read_and_redirect")
+async def read_and_redirect(
+    request: Request,
+    next: str,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    # 本来はIDを渡すべきだが、とりあえず最新の未読を既読にするか、クエリで渡す
+    # または dispatch.html などで ID を渡すように URL を組む
+    notification_id = request.query_params.get("id")
+    if notification_id:
+        n = db.query(models.Notification).get(int(notification_id))
+        if n:
+            n.is_read = True
+            db.commit()
+    return RedirectResponse(url=next, status_code=303)
+
+@app.post("/admin/notifications/{notification_id}/delete")
+async def delete_notification(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    n = db.query(models.Notification).get(notification_id)
+    if n:
+        db.delete(n)
+        db.commit()
+    return RedirectResponse(url="/admin/notifications", status_code=303)
+
+@app.post("/admin/notifications/{notification_id}/mark_read")
+async def mark_notification_read_post(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    n = db.query(models.Notification).get(notification_id)
+    if n:
+        n.is_read = True
+        db.commit()
+    return RedirectResponse(url="/admin/notifications", status_code=303)
 
 # ============================================================
 # 月次請求書自動発行スクリプト（手動実行とスケジュール用エンドポイント）
@@ -2855,13 +2913,15 @@ async def generate_monthly_invoices(
             target_id=agency.id,
             title="月次請求書発行",
             message=f"{last_month_start.strftime('%Y年%m月')}分の請求書（{inv_number}）が発行されました。金額: ¥{total:,.0f}",
-            link="/agency/invoices"
+            link="/agency/invoices",
+            related_type="Invoice",
+            related_id=invoice.id
         )
         db.add(notification)
         generated_count += 1
     
     db.commit()
-    return RedirectResponse(url=f"/admin/notifications?generated={generated_count}", status_code=303)
+    return RedirectResponse(url=f"/invoices?success_gen={generated_count}", status_code=303)
 
 # --- System Settings (Admin) ---
 @app.get("/admin/settings", response_class=HTMLResponse)

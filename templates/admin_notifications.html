@@ -10,20 +10,44 @@
 <div class="card">
     {% if notifications %}
     {% for n in notifications %}
-    <div style="padding: 1rem; border-bottom: 1px solid #eee; {% if not n.is_read %}background: #f0f7ff;{% endif %}">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-                {% if not n.is_read %}
-                <span style="background: #e74c3c; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">未読</span>
-                {% endif %}
-                <strong style="color: #2c3e50;">{{ n.title }}</strong>
+    <div style="padding: 1.2rem; border-bottom: 1px solid #edf2f7; {% if not n.is_read %}background: #f0f7ff; border-left: 4px solid #3498db;{% else %}background: #fff; border-left: 4px solid transparent;{% endif %}">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div style="flex-grow: 1;">
+                <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.4rem;">
+                    {% if not n.is_read %}
+                    <span style="background: #e74c3c; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; box-shadow: 0 2px 4px rgba(231,76,60,0.2);">未読</span>
+                    {% else %}
+                    <span style="background: #95a5a6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">既読</span>
+                    {% endif %}
+                    
+                    <strong style="color: #2c3e50; font-size: 1.05rem;">{{ n.title }}</strong>
+                    
+                    {% if n.id in status_map %}
+                    <span style="background: #34495e; color: white; padding: 2px 8px; border-radius: 20px; font-size: 0.7rem;">現在の状態: {{ status_map[n.id] }}</span>
+                    {% endif %}
+                </div>
+                <p style="margin: 0.5rem 0; color: #4a5568; line-height: 1.5;">{{ n.message }}</p>
+                
+                <div style="display: flex; gap: 1rem; align-items: center; margin-top: 0.8rem;">
+                    {% if n.link %}
+                    <a href="/admin/notifications/read_and_redirect?id={{ n.id }}&next={{ n.link }}" class="btn btn-sm btn-info" style="text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                        <span>👁️ 内容を確認する</span>
+                    </a>
+                    {% endif %}
+                    
+                    {% if not n.is_read %}
+                    <form action="/admin/notifications/{{ n.id }}/mark_read" method="post" style="display: inline;">
+                        <button type="submit" class="btn btn-sm btn-success" style="padding: 0.3rem 0.6rem;">既読にする</button>
+                    </form>
+                    {% endif %}
+                    
+                    <form action="/admin/notifications/{{ n.id }}/delete" method="post" style="display: inline;" onsubmit="return confirm('この通知を削除してもよろしいですか？')">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" style="padding: 0.3rem 0.6rem; color: #e74c3c; border: 1px solid #e74c3c; background: transparent; border-radius: 4px; cursor: pointer;">削除</button>
+                    </form>
+                </div>
             </div>
-            <span style="font-size: 0.8rem; color: #999;">{{ n.created_at.strftime('%Y/%m/%d %H:%M') if n.created_at else '' }}</span>
+            <span style="font-size: 0.8rem; color: #a0aec0; white-space: nowrap;">{{ n.created_at.strftime('%Y/%m/%d %H:%M') if n.created_at else '' }}</span>
         </div>
-        <p style="margin-top: 0.5rem; color: #555;">{{ n.message }}</p>
-        {% if n.link %}
-        <a href="/notifications/{{ n.id }}/read" style="font-size: 0.85rem; color: #3498db;">確認する →</a>
-        {% endif %}
     </div>
     {% endfor %}
     {% else %}

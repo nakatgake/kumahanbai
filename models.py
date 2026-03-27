@@ -164,6 +164,8 @@ class Notification(Base):
     message = Column(String)
     is_read = Column(Boolean, default=False)
     link = Column(String, nullable=True)
+    related_type = Column(String, nullable=True)  # "AgencyOrder", "Invoice", etc.
+    related_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class User(Base):
