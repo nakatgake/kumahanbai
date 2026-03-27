@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>代理店ポータル ログイン情報 - {{ customer.company }}様</title>
+    <style>
+        /* A4 Reset and Print Setup */
+        @page {
+            size: A4 portrait;
+            margin: 0;
+        }
+        * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        body {
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f0f0f0;
+            color: #333;
+            line-height: 1.6;
+        }
+        .page {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 20mm;
+            margin: 10mm auto;
+            border: 1px #D3D3D3 solid;
+            border-radius: 5px;
+            background: white;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+            position: relative;
+        }
+        @media print {
+            body { background: none; }
+            .page {
+                margin: 0;
+                border: initial;
+                border-radius: initial;
+                width: initial;
+                min-height: initial;
+                box-shadow: initial;
+                background: initial;
+                page-break-after: always;
+            }
+            .no-print { display: none !important; }
+        }
+
+        /* Content Styles */
+        .header {
+            text-align: right;
+            margin-bottom: 30px;
+            font-size: 10pt;
+            color: #555;
+        }
+        .title-area {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 3px solid #1a5276;
+            padding-bottom: 15px;
+        }
+        .title {
+            font-size: 24pt;
+            font-weight: bold;
+            color: #1a5276;
+            margin: 0;
+            letter-spacing: 2px;
+        }
+        .subtitle {
+            font-size: 12pt;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .customer-info {
+            font-size: 14pt;
+            margin-bottom: 40px;
+        }
+        .customer-name {
+            font-size: 18pt;
+            font-weight: bold;
+            border-bottom: 1px solid #333;
+            display: inline-block;
+            padding-bottom: 5px;
+            min-width: 50%;
+        }
+
+        .greeting {
+            font-size: 11pt;
+            line-height: 1.8;
+            margin-bottom: 40px;
+        }
+
+        .credentials-box {
+            background-color: #f8f9fa;
+            border: 2px solid #2980b9;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 40px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .credentials-title {
+            font-size: 14pt;
+            font-weight: bold;
+            color: #2980b9;
+            text-align: center;
+            margin-bottom: 25px;
+            border-bottom: 1px dashed #ccc;
+            padding-bottom: 10px;
+        }
+        table.cred-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table.cred-table th {
+            width: 30%;
+            text-align: left;
+            font-size: 12pt;
+            color: #555;
+            padding: 15px 10px;
+            border-bottom: 1px solid #eee;
+        }
+        table.cred-table td {
+            font-size: 16pt;
+            font-weight: bold;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 15px 10px;
+            border-bottom: 1px solid #eee;
+            color: #2c3e50;
+            letter-spacing: 2px;
+        }
+        .url-box {
+            background-color: #eef7fa;
+            border-left: 5px solid #1a5276;
+            padding: 20px;
+            margin-bottom: 40px;
+        }
+        .url-title {
+            font-size: 11pt;
+            font-weight: bold;
+            color: #1a5276;
+            margin-bottom: 10px;
+        }
+        .url-link {
+            font-size: 12pt;
+            color: #000;
+            word-break: break-all;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+        }
+
+        .qr-placeholder {
+            text-align: center;
+            margin: 20px 0;
+            font-size: 10pt;
+            color: #777;
+        }
+
+        .footer {
+            margin-top: 60px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 10pt;
+            line-height: 1.6;
+        }
+        .company-info {
+            float: right;
+            text-align: left;
+        }
+
+        /* Print Button */
+        .print-btn-wrapper {
+            text-align: center;
+            margin: 20px;
+        }
+        .print-btn {
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 16px;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            font-weight: bold;
+        }
+        .print-btn:hover { background-color: #219150; }
+    </style>
+</head>
+<body>
+
+<div class="no-print print-btn-wrapper">
+    <button class="print-btn" onclick="window.print()">このページを印刷する</button>
+    <a href="/customers/edit/{{ customer.id }}" style="margin-left: 15px; text-decoration: none; color: #3498db;">顧客編集に戻る</a>
+</div>
+
+<div class="page">
+    <div class="header">
+        発行日: {{ issue_date }}
+    </div>
+
+    <div class="customer-info">
+        <div class="customer-name">
+            {{ customer.company }} {% if customer.name %}{{ customer.name }} 様{% else %}御中{% endif %}
+        </div>
+    </div>
+
+    <div class="title-area">
+        <h1 class="title">代理店ポータル ログイン情報のご案内</h1>
+        <div class="subtitle">Agency Portal Login Credentials</div>
+    </div>
+
+    <div class="greeting">
+        拝啓<br><br>
+        平素は格別のお引き立てを賜り、厚く御礼申し上げます。<br>
+        この度、弊社の代理店専用Webポータルをご利用いただくためのログイン情報をご案内申し上げます。<br>
+        下記URLよりアクセスいただき、発行されましたIDおよびパスワードにてログインをお願いいたします。<br>
+        <br>
+        本システムでは、特別価格での製品発注ならびにお取引履歴の確認が24時間可能となっております。<br>
+        引き続き倍旧のご厚情を賜りたく、切にお願い申し上げます。<br>
+        <div style="text-align: right; margin-top: 10px;">敬具</div>
+    </div>
+
+    <div class="credentials-box">
+        <div class="credentials-title">🔐 アカウント情報</div>
+        <table class="cred-table">
+            <tr>
+                <th>ログインID</th>
+                <td>{{ customer.login_id }}</td>
+            </tr>
+            <tr>
+                <th>パスワード</th>
+                <td>{{ customer.agency_password }}</td>
+            </tr>
+        </table>
+        <div style="margin-top: 15px; font-size: 9pt; color: #e74c3c; text-align: center;">
+            ※セキュリティ保護のため、この用紙は大切に保管してください。
+        </div>
+    </div>
+
+    <div class="url-box">
+        <div class="url-title">🌐 代理店ポータル アクセスURL</div>
+        <div class="url-link">{{ portal_url }}</div>
+    </div>
+
+    <div class="footer">
+        <div class="company-info">
+            <strong>株式会社 熊ノ護化研</strong><br>
+            〒000-0000 北海道xxxxx<br>
+            TEL: 000-000-0000<br>
+            Email: info@kumanomori.jp
+        </div>
+        <div style="clear: both;"></div>
+    </div>
+</div>
+
+</body>
+</html>

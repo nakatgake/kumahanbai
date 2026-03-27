@@ -57,9 +57,12 @@
                 </label>
             </div>
             <div id="agencyFields" style="{% if not customer or not customer.is_agency %}display: none;{% endif %}">
+                <div style="margin-bottom: 1rem; text-align: right;">
+                    <button type="button" class="btn btn-sm" style="background: #34495e; color: white;" onclick="generateCredentials()">🔄 ID・パスワードを自動生成 (8〜10桁)</button>
+                </div>
                 <div class="form-group">
                     <label>ログインID</label>
-                    <input type="text" name="login_id" value="{{ customer.login_id if customer and customer.login_id else '' }}" placeholder="代理店用ログインID">
+                    <input type="text" name="login_id" id="loginId" value="{{ customer.login_id if customer and customer.login_id else '' }}" placeholder="代理店用ログインID">
                 </div>
                 <div class="form-group">
                     <label>パスワード <span style="font-size: 0.8rem; color: #666;">（代理店がログイン時に使用）</span></label>
@@ -75,7 +78,12 @@
             </div>
         </div>
 
-        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">保存する</button>
+        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+            <button type="submit" class="btn btn-primary" style="flex: 1;">保存する</button>
+            {% if customer and customer.is_agency %}
+            <a href="/customers/{{ customer.id }}/print-agency-info" target="_blank" class="btn btn-success" style="background: #27ae60; color: white; flex: 1; justify-content: center; text-decoration: none;">🖨️ ログイン情報を印刷 (A4)</a>
+            {% endif %}
+        </div>
     </form>
 
     {% if customer and customer.is_agency %}
@@ -102,6 +110,23 @@
 <script>
 function toggleAgencyFields(checkbox) {
     document.getElementById('agencyFields').style.display = checkbox.checked ? 'block' : 'none';
+}
+
+function generateCredentials() {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let id = ''; let psw = '';
+    const idLen = Math.floor(Math.random() * 3) + 8; // 8 to 10
+    const pswLen = Math.floor(Math.random() * 3) + 8; // 8 to 10
+    
+    // Ensure at least one number and one letter for better security
+    // For simplicity, just randomly pick
+    for(let i=0; i<idLen; i++) id += chars.charAt(Math.floor(Math.random() * chars.length));
+    for(let i=0; i<pswLen; i++) psw += chars.charAt(Math.floor(Math.random() * chars.length));
+    
+    document.getElementById('loginId').value = id;
+    document.getElementById('agencyPassword').value = psw;
+    
+    alert('8〜10桁のランダムなIDとパスワードを生成しました。必ず「保存する」ボタンを押してください。');
 }
 </script>
 {% endblock %}

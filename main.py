@@ -374,6 +374,26 @@ async def delete_customer(customer_id: int, db: Session = Depends(get_db),
     response.headers["HX-Refresh"] = "true"
     return response
 
+@app.get("/customers/{customer_id}/print-agency-info", response_class=HTMLResponse)
+async def print_agency_info(
+    customer_id: int, 
+    request: Request, 
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    customer = db.query(models.Customer).get(customer_id)
+    if not customer or not customer.is_agency:
+        return RedirectResponse(url="/customers", status_code=303)
+        
+    portal_url = str(request.base_url).rstrip('/') + "/agency/login"
+    
+    return templates.TemplateResponse(request=request, name="customers/agency_print.html", context={
+        "request": request, 
+        "customer": customer,
+        "issue_date": datetime.datetime.now().strftime('%Y年%m月%d日'),
+        "portal_url": portal_url
+    })
+
 # --- Products (商品台帳) ---
 @app.get("/products", response_class=HTMLResponse)
 async def list_products(
