@@ -64,7 +64,10 @@
             <button type="button" class="btn btn-sm" style="background: #34495e; color: white;" onclick="applyStandardSettings()">📋 熊ノ護化研の標準設定を自動入力</button>
         </div>
 
-        <button type="submit" class="btn btn-primary" style="margin-top: 1rem; width: 100%;">設定を保存する</button>
+        <div style="margin-top: 1rem; display: flex; gap: 1rem;">
+            <button type="submit" class="btn btn-primary" style="flex: 1;">設定を保存する</button>
+            <button type="submit" formaction="/admin/settings/test-smtp" class="btn" style="background: #34495e; color: white;">⚡ 接続テストのみ実行</button>
+        </div>
     </form>
 </div>
 

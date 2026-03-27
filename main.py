@@ -3136,6 +3136,49 @@ async def admin_settings_save(
         "success": "設定を保存しました。"
     })
 
+@app.post("/admin/settings/test-smtp")
+async def test_smtp_connection(
+    request: Request,
+    smtp_host: str = Form(""),
+    smtp_port: str = Form(""),
+    smtp_user: str = Form(""),
+    smtp_pass: str = Form(""),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    import smtplib
+    port = int(smtp_port) if smtp_port.isdigit() else 587
+    try:
+        if port == 465:
+            server = smtplib.SMTP_SSL(smtp_host, port, timeout=10)
+        else:
+            server = smtplib.SMTP(smtp_host, port, timeout=10)
+            server.starttls()
+        
+        server.login(smtp_user, smtp_pass)
+        server.quit()
+        return templates.TemplateResponse(request=request, name="admin_settings.html", context={
+            "request": request,
+            "user": user,
+            "success": "SMTP接続テストに成功しました！この設定で問題ありません。",
+            "settings": {
+                "smtp_host": smtp_host, "smtp_port": smtp_port, 
+                "smtp_user": smtp_user, "smtp_pass": smtp_pass
+            },
+            "active_page": "settings_admin"
+        })
+    except Exception as e:
+        return templates.TemplateResponse(request=request, name="admin_settings.html", context={
+            "request": request,
+            "user": user,
+            "error": f"接続テスト失敗: {str(e)}",
+            "settings": {
+                "smtp_host": smtp_host, "smtp_port": smtp_port, 
+                "smtp_user": smtp_user, "smtp_pass": smtp_pass
+            },
+            "active_page": "settings_admin"
+        })
+
 
 if __name__ == "__main__":
     import uvicorn
