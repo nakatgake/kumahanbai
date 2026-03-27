@@ -6,7 +6,7 @@
     <a href="/agency/orders" class="btn" style="background: #ccc;">発注履歴へ</a>
 </div>
 
-<form action="/agency/order/new" method="post" id="orderForm">
+<form action="/agency/order/new" method="post" id="orderForm" style="padding-bottom: 100px;">
     <div class="card">
         <h3 style="margin-bottom: 1rem;">商品一覧</h3>
         <p style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">数量を入力すると、合計金額が自動計算されます。</p>
@@ -40,30 +40,37 @@
                 </tr>
                 {% endfor %}
             </tbody>
-            <tfoot>
-                <tr style="background: #f8f9fa;">
-                    <td colspan="4" style="text-align: right; font-weight: bold; border-top: 2px solid #ddd;">合計（税抜）:</td>
-                    <td style="font-weight: bold; font-size: 1.1rem; border-top: 2px solid #ddd;" id="totalAmount">¥0</td>
-                </tr>
-                <tr style="background: #eef7fa;">
-                    <td colspan="4" style="text-align: right; font-weight: bold; color: #1a5276;">合計（税込10%）:</td>
-                    <td style="font-weight: bold; font-size: 1.2rem; color: #1a5276;" id="totalWithTax">¥0</td>
-                </tr>
-            </tfoot>
         </table>
         </div>
     </div>
 
-    <div class="card">
+    <div class="card" style="margin-bottom: 2rem;">
         <div class="form-group">
             <label>備考</label>
             <textarea name="memo" rows="3" placeholder="発注に関するメモがあれば記入してください"></textarea>
         </div>
     </div>
 
-    <button type="submit" class="btn btn-primary" style="width: 100%; padding: 1rem; font-size: 1.1rem; background: #1a5276;" onclick="return validateOrder()">
-        発注内容を確認して送信
-    </button>
+    <!-- 固定フッター (Sticky Footer) -->
+    <div class="sticky-footer">
+        <div class="sticky-content">
+            <div class="sticky-totals">
+                <div class="total-item">
+                    <span class="label">合計（税抜）:</span>
+                    <span class="value" id="totalAmount">¥0</span>
+                </div>
+                <div class="total-item highlight">
+                    <span class="label">合計（税込）:</span>
+                    <span class="value" id="totalWithTax">¥0</span>
+                </div>
+            </div>
+            <div class="sticky-actions">
+                <button type="submit" class="submit-btn" onclick="return validateOrder()">
+                    <span class="icon">🛒</span> 発注内容を確認して送信
+                </button>
+            </div>
+        </div>
+    </div>
 </form>
 
 <script>
@@ -78,7 +85,7 @@ function updateTotal() {
         row.querySelector('.row-subtotal').textContent = '¥' + subtotal.toLocaleString();
         
         if (qty > 0) {
-            row.style.background = '#fffde7'; // 数量が入っている行をハイライト
+            row.style.background = '#fffde7'; 
         } else {
             row.style.background = '';
         }
@@ -106,31 +113,121 @@ function validateOrder() {
     return confirm('この内容で発注してよろしいですか？');
 }
 
-// 初期計算
 updateTotal();
 </script>
 
 <style>
-table {
-    border-collapse: collapse;
+/* Table Styles */
+table { border-collapse: collapse; width: 100%; }
+th, td { border: 1px solid #ddd; padding: 0.8rem; }
+tr:hover { background: #fcfcfc; }
+.qty-input { border: 1px solid #ccc; border-radius: 4px; padding: 6px; text-align: center; font-size: 1rem; }
+.qty-input:focus { background: #fff9c4; outline: none; border-color: #fbc02d; box-shadow: 0 0 5px rgba(251, 192, 45, 0.5); }
+
+/* Sticky Footer Styles */
+.sticky-footer {
+    position: fixed;
+    bottom: 0;
+    left: 260px; /* サイドバーの幅に合わせて調整 */
+    right: 0;
+    background: #fff;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+    padding: 1rem 2rem;
+    z-index: 1000;
+    border-top: 1px solid #eee;
 }
-th, td {
-    border: 1px solid #ddd;
-    padding: 0.8rem;
+
+.sticky-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 2rem;
 }
-tr:hover {
-    background: #fcfcfc;
+
+.sticky-totals {
+    display: flex;
+    gap: 2rem;
 }
-.qty-input {
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    padding: 4px;
-    text-align: center;
+
+.total-item {
+    display: flex;
+    flex-direction: column;
 }
-.qty-input:focus {
-    background: #fff9c4;
-    outline: none;
-    border-color: #fbc02d;
+
+.total-item .label {
+    font-size: 0.85rem;
+    color: #666;
+    font-weight: bold;
+}
+
+.total-item .value {
+    font-size: 1.25rem;
+    font-weight: bold;
+    color: #333;
+}
+
+.total-item.highlight .value {
+    color: #e74c3c;
+    font-size: 1.5rem;
+}
+
+.sticky-actions {
+    flex: 1;
+    max-width: 400px;
+}
+
+.submit-btn {
+    width: 100%;
+    padding: 1rem;
+    background: linear-gradient(135deg, #1a5276 0%, #2980b9 100%);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 1.2rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(26, 82, 118, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.8rem;
+}
+
+.submit-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(26, 82, 118, 0.4);
+    filter: brightness(1.1);
+}
+
+.submit-btn:active {
+    transform: translateY(0);
+}
+
+/* Responsiveness */
+@media (max-width: 768px) {
+    .sticky-footer {
+        left: 0;
+        padding: 0.8rem 1rem;
+    }
+    .sticky-content {
+        flex-direction: column;
+        gap: 0.8rem;
+    }
+    .sticky-totals {
+        width: 100%;
+        justify-content: space-around;
+        gap: 0.5rem;
+    }
+    .sticky-actions {
+        width: 100%;
+        max-width: none;
+    }
+    .total-item .value { font-size: 1.1rem; }
+    .total-item.highlight .value { font-size: 1.25rem; }
+    .submit-btn { padding: 0.8rem; font-size: 1.1rem; }
 }
 </style>
 {% endblock %}
