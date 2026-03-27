@@ -8,46 +8,50 @@
 
 <form action="/agency/order/new" method="post" id="orderForm">
     <div class="card">
-        <h3 style="margin-bottom: 1rem;">商品を選択</h3>
+        <h3 style="margin-bottom: 1rem;">商品一覧</h3>
+        <p style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">数量を入力すると、合計金額が自動計算されます。</p>
         
-        <!-- 商品検索 -->
-        <div class="form-group" style="margin-bottom: 1.5rem;">
-            <label>商品検索</label>
-            <input type="text" id="productSearch" placeholder="商品名・コードで検索..." 
-                   hx-get="/agency/api/products/search" hx-trigger="keyup changed delay:300ms" 
-                   hx-target="#searchResults" hx-params="*" name="q">
-            <div id="searchResults" style="border: 1px solid #ddd; border-radius: 4px; max-height: 200px; overflow-y: auto; display: none;"></div>
-        </div>
-
-        <!-- 選択済み商品一覧 -->
         <div class="table-responsive">
-        <table id="selectedProducts">
+        <table>
             <thead>
                 <tr>
+                    <th>商品コード</th>
                     <th>商品名</th>
                     <th style="width: 120px;">単価</th>
                     <th style="width: 100px;">数量</th>
                     <th style="width: 120px;">小計</th>
-                    <th style="width: 60px;"></th>
                 </tr>
             </thead>
-            <tbody id="productRows">
+            <tbody>
+                {% for p in products %}
+                <tr class="product-row" data-price="{{ p.price }}">
+                    <td>{{ p.code }}</td>
+                    <td>{{ p.name }}</td>
+                    <td>¥{{ "{:,.0f}".format(p.price) }}</td>
+                    <td>
+                        <input type="hidden" name="product_id[]" value="{{ p.id }}">
+                        <input type="number" name="quantity[]" value="0" min="0" 
+                               style="width: 80px;" 
+                               class="qty-input"
+                               onchange="updateTotal()" 
+                               onkeyup="updateTotal()">
+                    </td>
+                    <td class="row-subtotal">¥0</td>
+                </tr>
+                {% endfor %}
             </tbody>
             <tfoot>
-                <tr>
-                    <td colspan="3" style="text-align: right; font-weight: bold;">合計（税抜）:</td>
-                    <td style="font-weight: bold; font-size: 1.1rem;" id="totalAmount">¥0</td>
-                    <td></td>
+                <tr style="background: #f8f9fa;">
+                    <td colspan="4" style="text-align: right; font-weight: bold; border-top: 2px solid #ddd;">合計（税抜）:</td>
+                    <td style="font-weight: bold; font-size: 1.1rem; border-top: 2px solid #ddd;" id="totalAmount">¥0</td>
                 </tr>
-                <tr>
-                    <td colspan="3" style="text-align: right; font-weight: bold; color: #1a5276;">合計（税込10%）:</td>
+                <tr style="background: #eef7fa;">
+                    <td colspan="4" style="text-align: right; font-weight: bold; color: #1a5276;">合計（税込10%）:</td>
                     <td style="font-weight: bold; font-size: 1.2rem; color: #1a5276;" id="totalWithTax">¥0</td>
-                    <td></td>
                 </tr>
             </tfoot>
         </table>
         </div>
-        <p id="noProductsMsg" style="text-align: center; color: #999; padding: 1rem;">商品を検索して追加してください</p>
     </div>
 
     <div class="card">
@@ -58,84 +62,76 @@
     </div>
 
     <button type="submit" class="btn btn-primary" style="width: 100%; padding: 1rem; font-size: 1.1rem; background: #1a5276;" onclick="return validateOrder()">
-        発注する
+        発注内容を確認して送信
     </button>
 </form>
 
 <script>
-// 商品を検索結果で表示
-document.getElementById('searchResults').addEventListener('htmx:afterSettle', function() {
-    this.style.display = 'block';
-});
-
-function addProduct(id, name, price) {
-    // 既に追加済みか確認
-    if (document.getElementById('product-row-' + id)) {
-        alert('この商品は既に追加されています');
-        return;
-    }
-    
-    document.getElementById('noProductsMsg').style.display = 'none';
-    document.getElementById('searchResults').style.display = 'none';
-    document.getElementById('productSearch').value = '';
-    
-    const tbody = document.getElementById('productRows');
-    const row = document.createElement('tr');
-    row.id = 'product-row-' + id;
-    row.innerHTML = `
-        <td>${name}<input type="hidden" name="product_id[]" value="${id}"></td>
-        <td>¥${price.toLocaleString()}</td>
-        <td><input type="number" name="quantity[]" value="1" min="1" style="width: 80px;" onchange="updateTotal()" onkeyup="updateTotal()"></td>
-        <td class="row-subtotal">¥${price.toLocaleString()}</td>
-        <td><button type="button" class="btn btn-sm btn-danger" onclick="removeProduct(${id})">×</button></td>
-    `;
-    row.dataset.price = price;
-    tbody.appendChild(row);
-    updateTotal();
-}
-
-function removeProduct(id) {
-    const row = document.getElementById('product-row-' + id);
-    if (row) row.remove();
-    const rows = document.getElementById('productRows').children;
-    if (rows.length === 0) {
-        document.getElementById('noProductsMsg').style.display = 'block';
-    }
-    updateTotal();
-}
-
 function updateTotal() {
     let total = 0;
-    const rows = document.getElementById('productRows').children;
-    for (let row of rows) {
+    const rows = document.querySelectorAll('.product-row');
+    rows.forEach(row => {
         const price = parseFloat(row.dataset.price);
-        const qty = parseInt(row.querySelector('input[name="quantity[]"]').value) || 0;
+        const qty = parseInt(row.querySelector('.qty-input').value) || 0;
         const subtotal = price * qty;
+        
         row.querySelector('.row-subtotal').textContent = '¥' + subtotal.toLocaleString();
+        
+        if (qty > 0) {
+            row.style.background = '#fffde7'; // 数量が入っている行をハイライト
+        } else {
+            row.style.background = '';
+        }
+        
         total += subtotal;
-    }
+    });
+    
     document.getElementById('totalAmount').textContent = '¥' + total.toLocaleString();
     document.getElementById('totalWithTax').textContent = '¥' + Math.floor(total * 1.1).toLocaleString();
 }
 
 function validateOrder() {
-    const rows = document.getElementById('productRows').children;
-    if (rows.length === 0) {
-        alert('商品を1つ以上追加してください');
+    let hasOrder = false;
+    const inputs = document.querySelectorAll('.qty-input');
+    inputs.forEach(input => {
+        if (parseInt(input.value) > 0) {
+            hasOrder = true;
+        }
+    });
+
+    if (!hasOrder) {
+        alert('数量を1つ以上入力してください');
         return false;
     }
     return confirm('この内容で発注してよろしいですか？');
 }
+
+// 初期計算
+updateTotal();
 </script>
 
 <style>
-.search-result {
-    padding: 0.6rem 1rem;
-    cursor: pointer;
-    border-bottom: 1px solid #eee;
+table {
+    border-collapse: collapse;
 }
-.search-result:hover {
-    background: #e8f4f8;
+th, td {
+    border: 1px solid #ddd;
+    padding: 0.8rem;
+}
+tr:hover {
+    background: #fcfcfc;
+}
+.qty-input {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 4px;
+    text-align: center;
+}
+.qty-input:focus {
+    background: #fff9c4;
+    outline: none;
+    border-color: #fbc02d;
 }
 </style>
+{% endblock %}
 {% endblock %}

@@ -1462,97 +1462,6 @@ async def export_invoices_excel(
     output.seek(0)
     
     filename = f"invoices_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
-# --- System Settings (Admin) ---
-@app.get("/admin/settings", response_class=HTMLResponse)
-async def admin_settings(request: Request, db: Session = Depends(get_db)):
-    user = await get_active_user(request, db)
-    if not user:
-        return RedirectResponse(url="/login", status_code=303)
-    
-    settings = db.query(models.SystemSetting).all()
-    settings_dict = {s.key: s.value for s in settings}
-    
-    return templates.TemplateResponse("admin_settings.html", {
-        "request": request,
-        "user": user,
-        "settings": settings_dict,
-        "active_page": "settings"
-    })
-
-@app.post("/admin/settings")
-async def admin_settings_save(
-    request: Request,
-    smtp_host: str = Form(""),
-    smtp_port: str = Form(""),
-    smtp_user: str = Form(""),
-    smtp_pass: str = Form(""),
-    smtp_from: str = Form(""),
-    notification_email: str = Form(""),
-    db: Session = Depends(get_db)
-):
-    user = await get_active_user(request, db)
-    if not user:
-        return RedirectResponse(url="/login", status_code=303)
-    
-    data = {
-        "smtp_host": smtp_host,
-        "smtp_port": smtp_port,
-        "smtp_user": smtp_user,
-        "smtp_pass": smtp_pass,
-        "smtp_from": smtp_from,
-        "notification_email": notification_email
-    }
-    
-    for key, value in data.items():
-        setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == key).first()
-        if setting:
-            setting.value = value
-        else:
-            db.add(models.SystemSetting(key=key, value=value))
-    
-    db.commit()
-    return RedirectResponse(url="/admin/settings", status_code=303)
-
-async def send_order_notification_email(order: models.AgencyOrder, db: Session):
-    settings = db.query(models.SystemSetting).all()
-    s = {s.key: s.value for s in settings}
-    
-    target = s.get("notification_email")
-    if not target or not s.get("smtp_host"):
-        print("Email notification skipped: no settings")
-        return
-
-    msg = EmailMessage()
-    content = f"""代理店：{order.customer.company} 様より新規発注がありました。
-
-【受注番号】: {order.order_number}
-【発注日時】: {order.order_date.strftime('%Y/%m/%d %H:%M') if order.order_date else '-'}
-【合計金額】: ¥{'{:,.0f}'.format(order.total_amount)} (税抜)
-
-詳細は管理画面の「代理店発注」よりご確認ください。
-"""
-    msg.set_content(content)
-    msg['Subject'] = f"【代理店サイト】新規発注のお知らせ ({order.customer.company}様)"
-    msg['From'] = s.get("smtp_from")
-    msg['To'] = target
-
-    try:
-        # SMTP configuration
-        smtp_host = s.get("smtp_host")
-        smtp_port = int(s.get("smtp_port") or 587)
-        smtp_user = s.get("smtp_user")
-        smtp_pass = s.get("smtp_pass")
-
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
-            if smtp_port == 587:
-                server.starttls()
-            if smtp_user and smtp_pass:
-                server.login(smtp_user, smtp_pass)
-            server.send_message(msg)
-        print(f"Email sent to {target}")
-    except Exception as e:
-        print(f"Failed to send email: {e}")
-
     return StreamingResponse(
         output, 
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1951,6 +1860,98 @@ async def init_admin(db: Session = Depends(get_db)):
 # 代理店ポータル (Agency Portal)
 # ============================================================
 
+
+# --- System Settings (Admin) ---
+@app.get("/admin/settings", response_class=HTMLResponse)
+async def admin_settings(request: Request, db: Session = Depends(get_db)):
+    user = await get_active_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    settings = db.query(models.SystemSetting).all()
+    settings_dict = {s.key: s.value for s in settings}
+    
+    return templates.TemplateResponse("admin_settings.html", {
+        "request": request,
+        "user": user,
+        "settings": settings_dict,
+        "active_page": "settings"
+    })
+
+@app.post("/admin/settings")
+async def admin_settings_save(
+    request: Request,
+    smtp_host: str = Form(""),
+    smtp_port: str = Form(""),
+    smtp_user: str = Form(""),
+    smtp_pass: str = Form(""),
+    smtp_from: str = Form(""),
+    notification_email: str = Form(""),
+    db: Session = Depends(get_db)
+):
+    user = await get_active_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    
+    data = {
+        "smtp_host": smtp_host,
+        "smtp_port": smtp_port,
+        "smtp_user": smtp_user,
+        "smtp_pass": smtp_pass,
+        "smtp_from": smtp_from,
+        "notification_email": notification_email
+    }
+    
+    for key, value in data.items():
+        setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == key).first()
+        if setting:
+            setting.value = value
+        else:
+            db.add(models.SystemSetting(key=key, value=value))
+    
+    db.commit()
+    return RedirectResponse(url="/admin/settings", status_code=303)
+
+async def send_order_notification_email(order: models.AgencyOrder, db: Session):
+    settings = db.query(models.SystemSetting).all()
+    s = {s.key: s.value for s in settings}
+    
+    target = s.get("notification_email")
+    if not target or not s.get("smtp_host"):
+        print("Email notification skipped: no settings")
+        return
+
+    msg = EmailMessage()
+    content = f"""代理店：{order.customer.company} 様より新規発注がありました。
+
+【受注番号】: {order.order_number}
+【発注日時】: {order.order_date.strftime('%Y/%m/%d %H:%M') if order.order_date else '-'}
+【合計金額】: ¥{'{:,.0f}'.format(order.total_amount)} (税抜)
+
+詳細は管理画面の「代理店発注」よりご確認ください。
+"""
+    msg.set_content(content)
+    msg['Subject'] = f"【代理店サイト】新規発注のお知らせ ({order.customer.company}様)"
+    msg['From'] = s.get("smtp_from")
+    msg['To'] = target
+
+    try:
+        # SMTP configuration
+        smtp_host = s.get("smtp_host")
+        smtp_port = int(s.get("smtp_port") or 587)
+        smtp_user = s.get("smtp_user")
+        smtp_pass = s.get("smtp_pass")
+
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            if smtp_port == 587:
+                server.starttls()
+            if smtp_user and smtp_pass:
+                server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+        print(f"Email sent to {target}")
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+
 agency_serializer = URLSafeSerializer(SECRET_KEY + "-agency")
 
 async def get_current_agency(request: Request, db: Session = Depends(get_db)):
@@ -2184,6 +2185,10 @@ async def agency_create_order(
     db.add(notification)
     
     db.commit()
+    
+    # メール通知の送信（バックグラウンドではなく同期実行、エラーは上記関数内でキャッチ）
+    await send_order_notification_email(agency_order, db)
+    
     return RedirectResponse(url="/agency/orders", status_code=303)
 
 # --- Agency Order History (発注履歴) ---

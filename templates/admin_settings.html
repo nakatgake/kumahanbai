@@ -1,0 +1,60 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>システム設定</h2>
+</div>
+
+<div class="card" style="max-width: 800px;">
+    <form action="/admin/settings" method="post">
+        <h3 style="margin-bottom: 1rem; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 0.5rem;">📧 メール通知設定（SMTP）</h3>
+        <p style="font-size: 0.9rem; color: #666; margin-bottom: 1.5rem;">
+            代理店から発注があった際に、指定したメールアドレスに通知を送るための設定です。<br>
+            ※Gmailをご利用の場合は「アプリパスワード」の生成が必要です。
+        </p>
+
+        <div class="form-group">
+            <label>通知先メールアドレス</label>
+            <input type="email" name="notification_email" value="{{ settings.notification_email or '' }}" placeholder="example@test.com">
+            <small style="color: #666;">発注通知を受け取るアドレスを入力してください。</small>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label>SMTPサーバーホスト</label>
+                <input type="text" name="smtp_host" value="{{ settings.smtp_host or '' }}" placeholder="smtp.gmail.com">
+            </div>
+            <div class="form-group">
+                <label>SMTPポート</label>
+                <input type="number" name="smtp_port" value="{{ settings.smtp_port or '587' }}" placeholder="587">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>SMTPユーザー名（送信元メールアドレス）</label>
+            <input type="text" name="smtp_user" value="{{ settings.smtp_user or '' }}" placeholder="your-email@gmail.com">
+        </div>
+
+        <div class="form-group">
+            <label>SMTPパスワード / アプリパスワード</label>
+            <input type="password" name="smtp_pass" value="{{ settings.smtp_pass or '' }}" placeholder="••••••••••••">
+        </div>
+
+        <div class="form-group">
+            <label>送信元表示メールアドレス (From)</label>
+            <input type="text" name="smtp_from" value="{{ settings.smtp_from or '' }}" placeholder="no-reply@kumanomori.jp">
+        </div>
+
+        <div style="margin-top: 2rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #3498db;">
+            <h4 style="margin-bottom: 0.5rem;">ℹ️ 設定に必要な情報</h4>
+            <ul style="font-size: 0.85rem; color: #444; padding-left: 1.2rem;">
+                <li><strong>SMTPサーバーホスト</strong>: メールの送信サーバー名（例: smtp.gmail.com）</li>
+                <li><strong>SMTPポート</strong>: 通常は 587 (TLS) または 465 (SSL) です。</li>
+                <li><strong>アプリパスワード</strong>: Gmail等の場合、通常のパスワードではなく「アプリパスワード」が必要です。</li>
+            </ul>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="margin-top: 2rem; width: 100%;">設定を保存する</button>
+    </form>
+</div>
+{% endblock %}
