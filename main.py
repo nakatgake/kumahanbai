@@ -2432,6 +2432,58 @@ async def admin_process_agency_order(
         db.commit()
     return RedirectResponse(url="/agency-orders", status_code=303)
 
+@app.post("/admin/agency-orders/{order_id}/convert")
+async def convert_agency_order_to_main(
+    order_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    agency_order = db.query(models.AgencyOrder).get(order_id)
+    if not agency_order:
+        return RedirectResponse(url="/agency-orders", status_code=303)
+    
+    # 1. Create Quotation
+    new_quote = models.Quotation(
+        customer_id=agency_order.customer_id,
+        quote_number=f"Q-AG-{agency_order.id}-{datetime.datetime.now().strftime('%m%d%H%M')}",
+        issue_date=datetime.datetime.now(),
+        expiry_date=datetime.datetime.now() + datetime.timedelta(days=180),
+        total_amount=agency_order.total_amount,
+        status=models.QuoteStatus.ORDERED,
+        memo=f"代理店発注({agency_order.order_number})より変換"
+    )
+    db.add(new_quote)
+    db.flush()
+    
+    # 2. Create Items
+    for item in agency_order.items:
+        qi = models.QuotationItem(
+            quotation_id=new_quote.id,
+            product_id=item.product_id,
+            description=item.product_name,
+            quantity=item.quantity,
+            unit_price=item.unit_price,
+            subtotal=item.subtotal
+        )
+        db.add(qi)
+    
+    # 3. Create Order
+    new_order = models.Order(
+        quotation_id=new_quote.id,
+        order_number=f"ORD-AG-{agency_order.id}-{datetime.datetime.now().strftime('%m%d%H%M')}",
+        order_date=datetime.datetime.now(),
+        total_amount=agency_order.total_amount,
+        status=models.OrderStatus.PENDING,
+        memo=f"代理店発注({agency_order.order_number})より変換"
+    )
+    db.add(new_order)
+    
+    # 4. Update Agency Order Status
+    agency_order.status = "処理済み"
+    
+    db.commit()
+    return RedirectResponse(url="/orders", status_code=303)
+
 # パスワード再発行（管理画面から）
 @app.post("/customers/{customer_id}/reset-agency-password")
 async def reset_agency_password(

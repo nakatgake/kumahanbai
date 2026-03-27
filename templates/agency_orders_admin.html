@@ -46,14 +46,22 @@
                     {% endif %}
                 </td>
                 <td>
-                    <form action="/agency-orders/{{ order.id }}/process" method="post" style="display: flex; gap: 0.3rem;">
-                        <select name="status" style="padding: 0.3rem; width: auto;">
-                            <option value="未処理" {% if order.status == '未処理' %}selected{% endif %}>未処理</option>
-                            <option value="処理済み" {% if order.status == '処理済み' %}selected{% endif %}>処理済み</option>
-                            <option value="キャンセル" {% if order.status == 'キャンセル' %}selected{% endif %}>キャンセル</option>
-                        </select>
-                        <button type="submit" class="btn btn-sm btn-primary">更新</button>
-                    </form>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <form action="/agency-orders/{{ order.id }}/process" method="post" style="display: flex; gap: 0.3rem;">
+                            <select name="status" style="padding: 0.3rem; width: auto;">
+                                <option value="未処理" {% if order.status == '未処理' %}selected{% endif %}>未処理</option>
+                                <option value="処理済み" {% if order.status == '処理済み' %}selected{% endif %}>処理済み</option>
+                                <option value="キャンセル" {% if order.status == 'キャンセル' %}selected{% endif %}>キャンセル</option>
+                            </select>
+                            <button type="submit" class="btn btn-sm btn-primary">更新</button>
+                        </form>
+                        
+                        {% if order.status == '未処理' %}
+                        <form action="/admin/agency-orders/{{ order.id }}/convert" method="post" onsubmit="return confirm('この発注を受注管理に登録しますか？');">
+                            <button type="submit" class="btn btn-sm btn-success" style="background: #27ae60;">受注管理に登録</button>
+                        </form>
+                        {% endif %}
+                    </div>
                 </td>
             </tr>
             <!-- 明細展開 -->
