@@ -6,6 +6,12 @@
 </div>
 
 <div class="card" style="max-width: 800px;">
+    {% if success %}
+    <div style="padding: 1rem; margin-bottom: 1rem; background: #d4edda; color: #155724; border: 1px solid #c3e6cb; border-radius: 4px;">
+        {{ success }}
+    </div>
+    {% endif %}
+    
     <form action="/admin/settings" method="post">
         <h3 style="margin-bottom: 1rem; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 0.5rem;">📧 メール通知設定（SMTP）</h3>
         <p style="font-size: 0.9rem; color: #666; margin-bottom: 1.5rem;">
@@ -15,34 +21,34 @@
 
         <div class="form-group">
             <label>通知先メールアドレス</label>
-            <input type="email" name="notification_email" value="{{ settings.notification_email or '' }}" placeholder="example@test.com">
+            <input type="email" name="notification_email" value="{{ settings.get('notification_email', '') }}" placeholder="example@test.com">
             <small style="color: #666;">発注通知を受け取るアドレスを入力してください。</small>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div class="form-group">
                 <label>SMTPサーバーホスト</label>
-                <input type="text" name="smtp_host" value="{{ settings.smtp_host or '' }}" placeholder="smtp.gmail.com">
+                <input type="text" name="smtp_host" value="{{ settings.get('smtp_host', '') }}" placeholder="smtp.gmail.com">
             </div>
             <div class="form-group">
                 <label>SMTPポート</label>
-                <input type="number" name="smtp_port" value="{{ settings.smtp_port or '587' }}" placeholder="587">
+                <input type="number" name="smtp_port" value="{{ settings.get('smtp_port', '587') }}" placeholder="587">
             </div>
         </div>
 
         <div class="form-group">
             <label>SMTPユーザー名（送信元メールアドレス）</label>
-            <input type="text" name="smtp_user" value="{{ settings.smtp_user or '' }}" placeholder="your-email@gmail.com">
+            <input type="text" name="smtp_user" value="{{ settings.get('smtp_user', '') }}" placeholder="your-email@gmail.com">
         </div>
 
         <div class="form-group">
             <label>SMTPパスワード / アプリパスワード</label>
-            <input type="password" name="smtp_pass" value="{{ settings.smtp_pass or '' }}" placeholder="••••••••••••">
+            <input type="password" name="smtp_pass" value="{{ settings.get('smtp_pass', '') }}" placeholder="••••••••••••">
         </div>
 
         <div class="form-group">
             <label>送信元表示メールアドレス (From)</label>
-            <input type="text" name="smtp_from" value="{{ settings.smtp_from or '' }}" placeholder="no-reply@kumanomori.jp">
+            <input type="text" name="smtp_from" value="{{ settings.get('smtp_from', '') }}" placeholder="no-reply@kumanomori.jp">
         </div>
 
         <div style="margin-top: 2rem; padding: 1rem; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #3498db;">

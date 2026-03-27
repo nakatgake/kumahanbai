@@ -1861,56 +1861,7 @@ async def init_admin(db: Session = Depends(get_db)):
 # ============================================================
 
 
-# --- System Settings (Admin) ---
-@app.get("/admin/settings", response_class=HTMLResponse)
-async def admin_settings(request: Request, db: Session = Depends(get_db)):
-    user = await get_active_user(request, db)
-    if not user:
-        return RedirectResponse(url="/login", status_code=303)
-    
-    settings = db.query(models.SystemSetting).all()
-    settings_dict = {s.key: s.value for s in settings}
-    
-    return templates.TemplateResponse("admin_settings.html", {
-        "request": request,
-        "user": user,
-        "settings": settings_dict,
-        "active_page": "settings"
-    })
 
-@app.post("/admin/settings")
-async def admin_settings_save(
-    request: Request,
-    smtp_host: str = Form(""),
-    smtp_port: str = Form(""),
-    smtp_user: str = Form(""),
-    smtp_pass: str = Form(""),
-    smtp_from: str = Form(""),
-    notification_email: str = Form(""),
-    db: Session = Depends(get_db)
-):
-    user = await get_active_user(request, db)
-    if not user:
-        return RedirectResponse(url="/login", status_code=303)
-    
-    data = {
-        "smtp_host": smtp_host,
-        "smtp_port": smtp_port,
-        "smtp_user": smtp_user,
-        "smtp_pass": smtp_pass,
-        "smtp_from": smtp_from,
-        "notification_email": notification_email
-    }
-    
-    for key, value in data.items():
-        setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == key).first()
-        if setting:
-            setting.value = value
-        else:
-            db.add(models.SystemSetting(key=key, value=value))
-    
-    db.commit()
-    return RedirectResponse(url="/admin/settings", status_code=303)
 
 async def send_order_notification_email(order: models.AgencyOrder, db: Session):
     settings = db.query(models.SystemSetting).all()
@@ -2605,6 +2556,58 @@ async def generate_monthly_invoices(
     
     db.commit()
     return RedirectResponse(url=f"/admin/notifications?generated={generated_count}", status_code=303)
+
+# --- System Settings (Admin) ---
+@app.get("/admin/settings", response_class=HTMLResponse)
+async def admin_settings(
+    request: Request, 
+    db: Session = Depends(get_db), 
+    user: models.User = Depends(get_active_user)
+):
+    settings = db.query(models.SystemSetting).all()
+    settings_dict = {s.key: s.value for s in settings if s.key}
+    
+    return templates.TemplateResponse(request=request, name="admin_settings.html", context={
+        "request": request,
+        "user": user,
+        "settings": settings_dict,
+        "active_page": "settings_admin"
+    })
+
+@app.post("/admin/settings")
+async def admin_settings_save(
+    request: Request,
+    smtp_host: str = Form(""),
+    smtp_port: str = Form(""),
+    smtp_user: str = Form(""),
+    smtp_pass: str = Form(""),
+    smtp_from: str = Form(""),
+    notification_email: str = Form(""),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    data = {
+        "smtp_host": smtp_host,
+        "smtp_port": smtp_port,
+        "smtp_user": smtp_user,
+        "smtp_pass": smtp_pass,
+        "smtp_from": smtp_from,
+        "notification_email": notification_email
+    }
+    for key, value in data.items():
+        setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == key).first()
+        if setting:
+            setting.value = value
+        else:
+            db.add(models.SystemSetting(key=key, value=value))
+    db.commit()
+    return templates.TemplateResponse(request=request, name="admin_settings.html", context={
+        "request": request,
+        "user": user,
+        "settings": data,
+        "active_page": "settings_admin",
+        "success": "設定を保存しました。"
+    })
 
 
 if __name__ == "__main__":
