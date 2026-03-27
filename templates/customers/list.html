@@ -37,6 +37,9 @@
                             <a href="/customers/edit/{{ customer.id }}" class="btn btn-sm btn-warning">編集</a>
                             {% if customer.is_agency %}
                             <a href="/customers/{{ customer.id }}/print-agency-info" target="_blank" class="btn btn-sm btn-success" style="background: #27ae60; color: white; padding: 0.25rem 0.5rem; font-size: 0.8rem;">🖨️ 印刷</a>
+                            <form action="/admin/customers/{{ customer.id }}/send-account-info" method="post" onsubmit="return confirm('{{ customer.company }} 様にアカウント情報をメールで送信しますか？');" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-info" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer;">📧 メールで送信</button>
+                            </form>
                             {% endif %}
                         </div>
                     </td>

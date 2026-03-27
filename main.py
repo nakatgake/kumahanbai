@@ -232,6 +232,9 @@ async def dashboard(
 async def list_customers(
     request: Request, 
     q: str = "", 
+    success_email: int = 0,
+    error: str = None,
+    msg: str = None,
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -248,6 +251,8 @@ async def list_customers(
         "active_page": "customers",
         "customers": customers,
         "search_query": q,
+        "message": "アカウント情報を送信しました。" if success_email else None,
+        "error": f"送信に失敗しました: {msg}" if error == "send_failed" else ("情報を確認してください。" if error == "missing_info" else ("SMTP設定を確認してください。" if error == "smtp_config" else None)),
         "CustomerRank": models.CustomerRank,
         "user": user
     })
@@ -2614,6 +2619,86 @@ async def reset_agency_password(
         customer.agency_password = new_password
         db.commit()
     return RedirectResponse(url=f"/customers/edit/{customer_id}", status_code=303)
+
+@app.post("/admin/customers/{customer_id}/send-account-info")
+async def send_customer_account_info(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    customer = db.query(models.Customer).get(customer_id)
+    if not customer or not customer.is_agency or not customer.email:
+        return RedirectResponse(url="/customers?error=missing_info", status_code=303)
+    
+    settings_records = db.query(models.SystemSetting).all()
+    settings = {s.key: s.value for s in settings_records}
+    
+    smtp_host = settings.get("smtp_host")
+    smtp_port_str = settings.get("smtp_port", "587")
+    smtp_port = int(smtp_port_str) if smtp_port_str.isdigit() else 587
+    smtp_user = settings.get("smtp_user")
+    smtp_pass = settings.get("smtp_pass")
+    smtp_from = settings.get("smtp_from", smtp_user)
+    
+    if not all([smtp_host, smtp_user, smtp_pass]):
+        return RedirectResponse(url="/customers?error=smtp_config", status_code=303)
+
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "【株式会社熊ノ護化研】代理店システム アカウント情報のご案内"
+        msg["From"] = smtp_from if smtp_from else "no-reply@kumanomori.jp"
+        msg["To"] = customer.email
+        
+        login_url = "https://kumanomori-production.up.railway.app/agency/login" # 本番URL
+        
+        html = f"""
+        <html>
+        <body style="font-family: sans-serif; line-height: 1.6; color: #333;">
+            <h2>代理店システム アカウント発行のご案内</h2>
+            <p>{customer.company or customer.name} 様</p>
+            <p>平素は格別のお引き立てをいただき、厚く御礼申し上げます。<br>
+            この度、弊社代理店システムの準備が整いましたので、アカウント情報をご案内いたします。</p>
+            
+            <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <p style="margin: 0;"><strong>ログインURL:</strong> <a href="{login_url}">{login_url}</a></p>
+                <p style="margin: 10px 0 0 0;"><strong>ログインID:</strong> {customer.login_id or '未設定'}</p>
+                <p style="margin: 5px 0 0 0;"><strong>パスワード:</strong> {customer.agency_password or '未設定'}</p>
+            </div>
+            
+            <p>管理画面では、商品の発注、見積書の作成、および過去の請求情報の確認が行えます。<br>
+            内容をご確認いただき、ログインをお試しください。</p>
+            
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+            <p style="font-size: 0.9rem; color: #666;">
+                株式会社熊ノ護化研<br>
+                〒010-0001 秋田県秋田市中通3-1-9<br>
+                TEL: 018-838-1920<br>
+                Mail: info@kumanomorikaken.co.jp
+            </p>
+        </body>
+        </html>
+        """
+        msg.attach(MIMEText(html, "html"))
+        
+        import smtplib
+        server = None
+        if smtp_port == 465:
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port)
+        else:
+            server = smtplib.SMTP(smtp_host, smtp_port)
+            server.starttls()
+        
+        server.login(smtp_user, smtp_pass)
+        server.send_message(msg)
+        server.quit()
+        
+        return RedirectResponse(url="/customers?success_email=1", status_code=303)
+    except Exception as e:
+        print(f"Email error: {e}")
+        return RedirectResponse(url=f"/customers?error=send_failed&msg={str(e)}", status_code=303)
 
 # 管理画面の通知バッジ用API
 @app.get("/api/admin/notification-count")
