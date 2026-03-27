@@ -2693,9 +2693,9 @@ async def send_customer_account_info(
         import smtplib
         server = None
         if smtp_port == 465:
-            server = smtplib.SMTP_SSL(smtp_host, smtp_port)
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=10)
         else:
-            server = smtplib.SMTP(smtp_host, smtp_port)
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
             server.starttls()
         
         server.login(smtp_user, smtp_pass)
@@ -2786,9 +2786,9 @@ async def dispatch_invoices_email(
     server = None
     try:
         if smtp_port == 465:
-            server = smtplib.SMTP_SSL(smtp_host, smtp_port)
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=10)
         else:
-            server = smtplib.SMTP(smtp_host, smtp_port)
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
             server.starttls()
         server.login(smtp_user, smtp_pass)
         
