@@ -10,12 +10,17 @@
     {% for n in notifications %}
     <div style="padding: 1rem; border-bottom: 1px solid #eee; {% if not n.is_read %}background: #f0f7ff;{% endif %}">
         <div style="display: flex; justify-content: space-between; align-items: center;">
-            <strong style="color: #2c3e50;">{{ n.title }}</strong>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                {% if not n.is_read %}
+                <span style="background: #e74c3c; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">未読</span>
+                {% endif %}
+                <strong style="color: #2c3e50;">{{ n.title }}</strong>
+            </div>
             <span style="font-size: 0.8rem; color: #999;">{{ n.created_at.strftime('%Y/%m/%d %H:%M') if n.created_at else '' }}</span>
         </div>
         <p style="margin-top: 0.5rem; color: #555;">{{ n.message }}</p>
         {% if n.link %}
-        <a href="{{ n.link }}" style="font-size: 0.85rem; color: #3498db;">確認する →</a>
+        <a href="/notifications/{{ n.id }}/read" style="font-size: 0.85rem; color: #3498db;">確認する →</a>
         {% endif %}
     </div>
     {% endfor %}

@@ -2529,6 +2529,21 @@ async def admin_notification_count(db: Session = Depends(get_db), user: models.U
     ).count()
     return {"count": count}
 
+@app.get("/notifications/{notification_id}/read")
+async def read_notification(
+    notification_id: int,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    n = db.query(models.Notification).get(notification_id)
+    if n:
+        n.is_read = True
+        db.commit()
+        if n.link:
+            return RedirectResponse(url=n.link, status_code=303)
+    referer = request.headers.get("referer")
+    return RedirectResponse(url=referer if referer else "/", status_code=303)
+
 @app.get("/admin/notifications", response_class=HTMLResponse)
 async def admin_notifications(
     request: Request,
