@@ -80,9 +80,6 @@
 
         <div style="display: flex; gap: 1rem; margin-top: 1rem;">
             <button type="submit" class="btn btn-primary" style="flex: 1;">保存する</button>
-            {% if customer and customer.is_agency %}
-            <a href="/customers/{{ customer.id }}/print-agency-info" target="_blank" class="btn btn-success" style="background: #27ae60; color: white; flex: 1; justify-content: center; text-decoration: none;">🖨️ ログイン情報を印刷 (A4)</a>
-            {% endif %}
         </div>
     </form>
 

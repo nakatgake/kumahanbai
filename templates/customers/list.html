@@ -33,7 +33,12 @@
                     <td>{{ customer.email }}</td>
                     <td>{{ customer.phone }}</td>
                     <td>
-                        <a href="/customers/edit/{{ customer.id }}" class="btn btn-sm btn-warning">編集</a>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <a href="/customers/edit/{{ customer.id }}" class="btn btn-sm btn-warning">編集</a>
+                            {% if customer.is_agency %}
+                            <a href="/customers/{{ customer.id }}/print-agency-info" target="_blank" class="btn btn-sm btn-success" style="background: #27ae60; color: white; padding: 0.25rem 0.5rem; font-size: 0.8rem;">🖨️ 印刷</a>
+                            {% endif %}
+                        </div>
                     </td>
                 </tr>
                 {% else %}
