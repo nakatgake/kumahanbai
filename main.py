@@ -2647,7 +2647,8 @@ async def send_customer_account_info(
     
     if missing:
         missing_str = "、".join(missing)
-        return RedirectResponse(url=f"/customers?error=smtp_config&msg={missing_str}", status_code=303)
+        all_keys = [s.key for s in settings_records if s.key]
+        return RedirectResponse(url=f"/customers?error=smtp_config&msg={missing_str} (全設定数: {len(all_keys)}, キー: {','.join(all_keys)})", status_code=303)
 
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
