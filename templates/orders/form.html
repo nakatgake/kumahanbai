@@ -19,7 +19,6 @@
                        hx-target="#customer-search-results"
                        style="width: 100%;">
                 <input type="hidden" name="customer_id" id="selected-customer-id" value="{{ order.quotation.customer_id if order and order.quotation else '' }}" required>
-                <input type="hidden" id="selected-customer-rank" value="{{ order.quotation.customer.rank.name if order and order.quotation and order.quotation.customer else 'RETAIL' }}">
                 <div id="customer-search-results" class="search-results-dropdown"></div>
             </div>
         </div>

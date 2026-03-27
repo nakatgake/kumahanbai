@@ -20,7 +20,6 @@
                            hx-target="#customer-search-results"
                            style="width: 100%;">
                     <input type="hidden" name="customer_id" id="selected-customer-id" value="{{ quotation.customer_id if quotation else '' }}" required>
-                    <input type="hidden" id="selected-customer-rank" value="{{ quotation.customer.rank.name if quotation and quotation.customer else 'RETAIL' }}">
                     <div id="customer-search-results" class="search-results-dropdown"></div>
                 </div>
             </div>
