@@ -252,7 +252,7 @@ async def list_customers(
         "customers": customers,
         "search_query": q,
         "message": "アカウント情報を送信しました。" if success_email else None,
-        "error": f"送信に失敗しました: {msg}" if error == "send_failed" else ("情報を確認してください。" if error == "missing_info" else ("SMTP設定を確認してください。" if error == "smtp_config" else None)),
+        "error": f"送信に失敗しました: {msg}" if error == "send_failed" else (f"SMTP設定（{msg}）を確認してください。" if error == "smtp_config" else ("情報を確認してください。" if error == "missing_info" else None)),
         "CustomerRank": models.CustomerRank,
         "user": user
     })
@@ -2640,8 +2640,14 @@ async def send_customer_account_info(
     smtp_pass = settings.get("smtp_pass")
     smtp_from = settings.get("smtp_from", smtp_user)
     
-    if not all([smtp_host, smtp_user, smtp_pass]):
-        return RedirectResponse(url="/customers?error=smtp_config", status_code=303)
+    missing = []
+    if not smtp_host: missing.append("ホスト")
+    if not smtp_user: missing.append("ユーザー名")
+    if not smtp_pass: missing.append("パスワード")
+    
+    if missing:
+        missing_str = "、".join(missing)
+        return RedirectResponse(url=f"/customers?error=smtp_config&msg={missing_str}", status_code=303)
 
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -3107,12 +3113,12 @@ async def admin_settings_save(
     user: models.User = Depends(get_active_user)
 ):
     data = {
-        "smtp_host": smtp_host,
-        "smtp_port": smtp_port,
-        "smtp_user": smtp_user,
-        "smtp_pass": smtp_pass,
-        "smtp_from": smtp_from,
-        "notification_email": notification_email
+        "smtp_host": smtp_host.strip(),
+        "smtp_port": smtp_port.strip(),
+        "smtp_user": smtp_user.strip(),
+        "smtp_pass": smtp_pass.strip(),
+        "smtp_from": smtp_from.strip(),
+        "notification_email": notification_email.strip()
     }
     for key, value in data.items():
         setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == key).first()
