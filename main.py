@@ -2394,20 +2394,78 @@ async def agency_notifications(
     notifications = db.query(models.Notification).filter(
         models.Notification.target_type == "agency",
         models.Notification.target_id == agency.id
-    ).order_by(models.Notification.id.desc()).all()
+    ).order_by(models.Notification.id.desc()).limit(50).all()
     
-    # 未読を既読にする
+    # 関連エンティティの最新ステータスを取得
+    status_map = {}
     for n in notifications:
-        if not n.is_read:
-            n.is_read = True
-    db.commit()
+        if n.related_type == "AgencyOrder" and n.related_id:
+            order = db.query(models.AgencyOrder).get(n.related_id)
+            if order:
+                status_map[n.id] = order.status
+        elif n.related_type == "Invoice" and n.related_id:
+            inv = db.query(models.Invoice).get(n.related_id)
+            if inv:
+                status_map[n.id] = inv.status.name
     
     return templates.TemplateResponse(request=request, name="agency/notifications.html", context={
         "request": request,
         "agency": agency,
         "active_page": "agency_notifications",
-        "notifications": notifications
+        "notifications": notifications,
+        "status_map": status_map
     })
+
+@app.get("/agency/notifications/read_and_redirect")
+async def agency_read_and_redirect(
+    request: Request,
+    next: str,
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    notification_id = request.query_params.get("id")
+    if notification_id:
+        n = db.query(models.Notification).filter(
+            models.Notification.id == int(notification_id),
+            models.Notification.target_type == "agency",
+            models.Notification.target_id == agency.id
+        ).first()
+        if n:
+            n.is_read = True
+            db.commit()
+    return RedirectResponse(url=next, status_code=303)
+
+@app.post("/agency/notifications/{notification_id}/delete")
+async def agency_delete_notification(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    n = db.query(models.Notification).filter(
+        models.Notification.id == notification_id,
+        models.Notification.target_type == "agency",
+        models.Notification.target_id == agency.id
+    ).first()
+    if n:
+        db.delete(n)
+        db.commit()
+    return RedirectResponse(url="/agency/notifications", status_code=303)
+
+@app.post("/agency/notifications/{notification_id}/mark_read")
+async def agency_mark_notification_read_post(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    n = db.query(models.Notification).filter(
+        models.Notification.id == notification_id,
+        models.Notification.target_type == "agency",
+        models.Notification.target_id == agency.id
+    ).first()
+    if n:
+        n.is_read = True
+        db.commit()
+    return RedirectResponse(url="/agency/notifications", status_code=303)
 
 # --- Agency Product Search API ---
 @app.get("/agency/api/products/search")
