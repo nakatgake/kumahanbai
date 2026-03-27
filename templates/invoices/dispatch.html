@@ -45,8 +45,8 @@
                     <td><input type="checkbox" name="invoice_ids" value="{{ inv.id }}" class="check-email" checked></td>
                     <td>{{ inv.invoice_number }}</td>
                     <td>{{ inv.order.customer.company if inv.order.customer.company else inv.order.customer.name }}</td>
-                    <td>{{ inv.order.customer.email }}</td>
-                    <td>¥{{ "{:,.0f}".format(inv.total_amount) }}</td>
+                    <td>{{ inv.order.customer.email if inv.order.customer.email else '' }}</td>
+                    <td>¥{{ "{:,.0f}".format(inv.total_amount) if inv.total_amount is not None else "0" }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -82,8 +82,8 @@
                     <td><input type="checkbox" name="invoice_ids" value="{{ inv.id }}" class="check-postal" checked></td>
                     <td>{{ inv.invoice_number }}</td>
                     <td>{{ inv.order.customer.company if inv.order.customer.company else inv.order.customer.name }}</td>
-                    <td>{{ inv.order.customer.address }}</td>
-                    <td>¥{{ "{:,.0f}".format(inv.total_amount) }}</td>
+                    <td>{{ inv.order.customer.address if inv.order.customer.address else '' }}</td>
+                    <td>¥{{ "{:,.0f}".format(inv.total_amount) if inv.total_amount is not None else "0" }}</td>
                 </tr>
                 {% endfor %}
             </tbody>

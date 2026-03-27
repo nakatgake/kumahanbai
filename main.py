@@ -3,6 +3,8 @@ from typing import Optional
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 import shutil
 import os
+import random
+import string
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
@@ -2559,7 +2561,8 @@ async def admin_invoice_dispatch(
     
     for inv in unpaid_invoices:
         if inv.order and inv.order.customer:
-            method = inv.order.customer.invoice_delivery_method
+            # カラムが存在しない場合やデータがNULLの場合の安全策
+            method = getattr(inv.order.customer, 'invoice_delivery_method', 'POSTAL')
             if method == "EMAIL":
                 email_invoices.append(inv)
             else:
