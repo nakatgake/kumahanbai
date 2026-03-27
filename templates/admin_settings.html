@@ -60,7 +60,26 @@
             </ul>
         </div>
 
-        <button type="submit" class="btn btn-primary" style="margin-top: 2rem; width: 100%;">設定を保存する</button>
+        <div style="margin-bottom: 2rem; display: flex; justify-content: flex-end;">
+            <button type="button" class="btn btn-sm" style="background: #34495e; color: white;" onclick="applyStandardSettings()">📋 熊ノ護化研の標準設定を自動入力</button>
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="margin-top: 1rem; width: 100%;">設定を保存する</button>
     </form>
 </div>
+
+<script>
+function applyStandardSettings() {
+    if(!confirm('標準設定（Lolipop）を自動入力しますか？')) return;
+    
+    document.querySelector('input[name="smtp_host"]').value = 'smtp.lolipop.jp';
+    document.querySelector('input[name="smtp_port"]').value = '465';
+    document.querySelector('input[name="smtp_user"]').value = 'kumanomori@kumanomorikaken.co.jp';
+    document.querySelector('input[name="smtp_pass"]').value = 'r9Fs1-k-2wf2W_6b';
+    document.querySelector('input[name="smtp_from"]').value = 'kumanomori@kumanomorikaken.co.jp';
+    document.querySelector('input[name="notification_email"]').value = 'nakamura@connect-web.jp';
+    
+    alert('設定を入力しました。一番下の「設定を保存する」ボタンを押して確定させてください。');
+}
+</script>
 {% endblock %}
