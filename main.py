@@ -1864,16 +1864,18 @@ async def init_admin(db: Session = Depends(get_db)):
 
 
 async def send_order_notification_email(order: models.AgencyOrder, db: Session):
-    settings = db.query(models.SystemSetting).all()
-    s = {s.key: s.value for s in settings}
-    
-    target = s.get("notification_email")
-    if not target or not s.get("smtp_host"):
-        print("Email notification skipped: no settings")
-        return
+    try:
+        settings = db.query(models.SystemSetting).all()
+        s = {s.key: s.value for s in settings}
+        
+        target = s.get("notification_email")
+        if not target or not s.get("smtp_host"):
+            print("Email notification skipped: no settings")
+            return
 
-    msg = EmailMessage()
-    content = f"""代理店：{order.customer.company} 様より新規発注がありました。
+        msg = EmailMessage()
+        company_name = order.customer.company if order.customer else "不明な代理店"
+        content = f"""代理店：{company_name} 様より新規発注がありました。
 
 【受注番号】: {order.order_number}
 【発注日時】: {order.order_date.strftime('%Y/%m/%d %H:%M') if order.order_date else '-'}
@@ -1881,19 +1883,24 @@ async def send_order_notification_email(order: models.AgencyOrder, db: Session):
 
 詳細は管理画面の「代理店発注」よりご確認ください。
 """
-    msg.set_content(content)
-    msg['Subject'] = f"【代理店サイト】新規発注のお知らせ ({order.customer.company}様)"
-    msg['From'] = s.get("smtp_from")
-    msg['To'] = target
+        msg.set_content(content)
+        msg['Subject'] = f"【代理店サイト】新規発注のお知らせ ({company_name}様)"
+        msg['From'] = s.get("smtp_from")
+        msg['To'] = target
 
-    try:
         # SMTP configuration
         smtp_host = s.get("smtp_host")
-        smtp_port = int(s.get("smtp_port") or 587)
+        smtp_port_val = s.get("smtp_port") or "587"
+        try:
+            smtp_port = int(smtp_port_val)
+        except ValueError:
+            smtp_port = 587
+            
         smtp_user = s.get("smtp_user")
         smtp_pass = s.get("smtp_pass")
 
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
+        # Use dry-run logic if needed or just catch all
+        with smtplib.SMTP(str(smtp_host), smtp_port, timeout=10) as server:
             if smtp_port == 587:
                 server.starttls()
             if smtp_user and smtp_pass:
@@ -1902,6 +1909,7 @@ async def send_order_notification_email(order: models.AgencyOrder, db: Session):
         print(f"Email sent to {target}")
     except Exception as e:
         print(f"Failed to send email: {e}")
+        # Note: We don't raise the error here to avoid breaking the order creation flow
 
 agency_serializer = URLSafeSerializer(SECRET_KEY + "-agency")
 
@@ -2087,60 +2095,70 @@ async def agency_create_order(
     product_ids = form_data.getlist("product_id[]")
     quantities = form_data.getlist("quantity[]")
     
-    if not product_ids or all(int(q) == 0 for q in quantities):
-        return HTMLResponse(content="<script>alert('商品を1つ以上選択してください'); history.back();</script>", status_code=400)
-    
-    order_number = f"AG-{agency.id}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
-    
-    agency_order = models.AgencyOrder(
-        customer_id=agency.id,
-        order_number=order_number,
-        memo=memo,
-        status="未処理"
-    )
-    db.add(agency_order)
-    db.flush()
-    
-    total = 0
-    for p_id, qty in zip(product_ids, quantities):
-        qty = int(qty)
-        if qty <= 0:
-            continue
-        product = db.query(models.Product).get(int(p_id))
-        if not product:
-            continue
-        price = get_price_for_rank(product, agency.rank)
-        subtotal = qty * price
+    try:
+        if not product_ids or all(int(q) == 0 for q in quantities):
+            return HTMLResponse(content="<script>alert('商品を1つ以上選択してください'); history.back();</script>", status_code=400)
         
-        item = models.AgencyOrderItem(
-            agency_order_id=agency_order.id,
-            product_id=product.id,
-            product_name=product.name,
-            quantity=qty,
-            unit_price=price,
-            subtotal=subtotal
+        order_number = f"AG-{agency.id}-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+        
+        agency_order = models.AgencyOrder(
+            customer_id=agency.id,
+            order_number=order_number,
+            memo=memo,
+            status="未処理"
         )
-        db.add(item)
-        total += subtotal
-    
-    agency_order.total_amount = total
-    
-    # 当社への通知
-    notification = models.Notification(
-        target_type="admin",
-        target_id=None,
-        title="新規代理店発注",
-        message=f"{agency.company}様から新規発注（{order_number}）がありました。合計: ¥{total:,.0f}",
-        link=f"/agency-orders"
-    )
-    db.add(notification)
-    
-    db.commit()
-    
-    # メール通知の送信（バックグラウンドではなく同期実行、エラーは上記関数内でキャッチ）
-    await send_order_notification_email(agency_order, db)
-    
-    return RedirectResponse(url="/agency/orders", status_code=303)
+        db.add(agency_order)
+        db.flush()
+        
+        total = 0
+        for p_id, qty in zip(product_ids, quantities):
+            try:
+                qty = int(qty)
+            except (ValueError, TypeError):
+                continue
+                
+            if qty <= 0:
+                continue
+            product = db.query(models.Product).get(int(p_id))
+            if not product:
+                continue
+            price = get_price_for_rank(product, agency.rank)
+            subtotal = qty * price
+            
+            item = models.AgencyOrderItem(
+                agency_order_id=agency_order.id,
+                product_id=product.id,
+                product_name=product.name,
+                quantity=qty,
+                unit_price=price,
+                subtotal=subtotal
+            )
+            db.add(item)
+            total += subtotal
+        
+        agency_order.total_amount = total
+        
+        # 当社への通知
+        notification = models.Notification(
+            target_type="admin",
+            target_id=None,
+            title="新規代理店発注",
+            message=f"{agency.company}様から新規発注（{order_number}）がありました。合計: ¥{total:,.0f}",
+            link=f"/agency-orders"
+        )
+        db.add(notification)
+        
+        db.commit()
+        
+        # メール通知の送信（バックグラウンドではなく同期実行、エラーは上記関数内でキャッチ）
+        await send_order_notification_email(agency_order, db)
+        
+        return RedirectResponse(url="/agency/orders", status_code=303)
+
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        return HTMLResponse(content=f"<h3>Order Creation Error</h3><pre style='background:#fee;padding:1rem;'>{error_details}</pre>", status_code=200)
 
 # --- Agency Order History (発注履歴) ---
 @app.get("/agency/orders", response_class=HTMLResponse)
