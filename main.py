@@ -100,6 +100,9 @@ def migrate_db():
     if 'agency_password' not in cols:
         print("Migrating customers: adding agency_password column...")
         cursor.execute("ALTER TABLE customers ADD COLUMN agency_password VARCHAR")
+    if 'invoice_delivery_method' not in cols:
+        print("Migrating customers: adding invoice_delivery_method column...")
+        cursor.execute("ALTER TABLE customers ADD COLUMN invoice_delivery_method VARCHAR DEFAULT 'POSTAL'")
     
     # Check if system_settings table exists
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")
@@ -112,6 +115,13 @@ def migrate_db():
                 value VARCHAR
             )
         """)
+    
+    # Check if notification is_read field exists
+    cursor.execute("PRAGMA table_info(notifications)")
+    cols = [row[1] for row in cursor.fetchall()]
+    if 'is_read' not in cols:
+        print("Migrating notifications: adding is_read column...")
+        cursor.execute("ALTER TABLE notifications ADD COLUMN is_read BOOLEAN DEFAULT 0")
     
     conn.commit()
     conn.close()
