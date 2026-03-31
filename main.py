@@ -1937,7 +1937,7 @@ async def send_order_notification_email(order: models.AgencyOrder, db: Session):
 【合計金額】: ¥{'{:,.0f}'.format(order.total_amount)} (税抜)
 
 詳細は管理画面の「代理店発注」ページ、または以下の通知一覧よりご確認ください。
-https://kumanomorikaken.co.jp/admin/notifications
+https://app.kumanomorikaken.co.jp/admin/notifications
 """
         msg.set_content(content)
         msg['Subject'] = f"【代理店サイト】新規発注のお知らせ ({company_name}様)"
