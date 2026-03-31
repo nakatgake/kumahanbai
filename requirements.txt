@@ -7,3 +7,5 @@ fpdf2
 xlsxwriter
 itsdangerous
 passlib[pbkdf2-sha256]
+gunicorn
+a2wsgi

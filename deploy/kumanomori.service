@@ -1,0 +1,13 @@
+[Unit]
+Description=Gunicorn instance to serve Kumanomori app
+After=network.target
+
+[Service]
+User=root
+Group=www-data
+WorkingDirectory=/var/www/kumanomori
+Environment="PATH=/var/www/kumanomori/venv/bin"
+ExecStart=/var/www/kumanomori/venv/bin/gunicorn -w 4 -k uvicorn.workers.UvicornWorker main:app
+
+[Install]
+WantedBy=multi-user.target

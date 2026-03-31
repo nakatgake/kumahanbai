@@ -1,0 +1,34 @@
+name: Deploy to XServer VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Copy files via scp
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 220.158.27.121
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # 大切なファイルを上書きしないように設定します
+          source: "!, .git, !, venv, !, *.db, !, *.db.tmp, !, **"
+          target: "/var/www/kumanomori/"
+          rm: false
+
+      - name: Restart services via ssh
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 220.158.27.121
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            systemctl restart kumanomori
+            systemctl restart nginx
