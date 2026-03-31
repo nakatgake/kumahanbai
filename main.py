@@ -1921,9 +1921,11 @@ async def send_order_notification_email(order: models.AgencyOrder, db: Session):
         settings = db.query(models.SystemSetting).all()
         s = {s.key: s.value for s in settings}
         
-        target = s.get("notification_email")
-        if not target or not s.get("smtp_host"):
-            print("Email notification skipped: no settings")
+        # 宛先: 設定がなければ info@kumanomorikaken.co.jp に送る
+        target = s.get("notification_email") or "info@kumanomorikaken.co.jp"
+        
+        if not s.get("smtp_host"):
+            print("Email notification skipped: no SMTP host configured")
             return
 
         msg = EmailMessage()
@@ -1934,7 +1936,8 @@ async def send_order_notification_email(order: models.AgencyOrder, db: Session):
 【発注日時】: {order.order_date.strftime('%Y/%m/%d %H:%M') if order.order_date else '-'}
 【合計金額】: ¥{'{:,.0f}'.format(order.total_amount)} (税抜)
 
-詳細は管理画面の「代理店発注」よりご確認ください。
+詳細は管理画面の「代理店発注」ページ、または以下の通知一覧よりご確認ください。
+https://kumanomorikaken.co.jp/admin/notifications
 """
         msg.set_content(content)
         msg['Subject'] = f"【代理店サイト】新規発注のお知らせ ({company_name}様)"
