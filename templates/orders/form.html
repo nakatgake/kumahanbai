@@ -185,7 +185,7 @@
         if (rank !== 'RETAIL') {
             const shippingRowId = 'row-shipping-fee-auto';
             const existingShippingRow = document.getElementById(shippingRowId);
-            const discountedProductTotalInclTax = (productTotal * (1 - discountRate/100)) * 1.1;
+            const discountedProductTotalInclTax = Math.floor((productTotal * (1 - discountRate/100)) * 1.1);
             
             if (discountedProductTotalInclTax >= 10000 && discountedProductTotalInclTax <= 30000) {
                 if (!existingShippingRow) {
@@ -233,7 +233,7 @@
         
         const totalText = document.getElementById('grand-total').innerText.replace(/[¥,]/g, '');
         const totalTaxExcl = parseFloat(totalText) || 0;
-        const totalTaxIncl = totalTaxExcl * 1.1;
+        const totalTaxIncl = Math.floor(totalTaxExcl * 1.1);
         
         if (totalTaxIncl < 10000) {
             alert('ご注文税込み金額が1万円以下の為、お受けすることができません。');

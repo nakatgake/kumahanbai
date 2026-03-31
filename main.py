@@ -743,8 +743,8 @@ async def create_quotation(
         db.add(item)
         total += subtotal
     
-    final_total_tax_excl = total * (1 - (discount_rate / 100))
-    if customer_rank != "RETAIL" and (final_total_tax_excl * 1.1) < 10000:
+    final_total_tax_excl = int(total * (1 - (discount_rate / 100)))
+    if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
         return HTMLResponse(content="<script>alert('ご注文税込み金額が1万円以下の為、お受けすることができません。'); history.back();</script>", status_code=400)
 
     quotation.total_amount = final_total_tax_excl
@@ -846,8 +846,8 @@ async def update_quotation(
             if product:
                 product.stock_quantity -= qty
     
-    final_total_tax_excl = total * (1 - (discount_rate / 100))
-    if customer_rank != "RETAIL" and (final_total_tax_excl * 1.1) < 10000:
+    final_total_tax_excl = int(total * (1 - (discount_rate / 100)))
+    if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
         return HTMLResponse(content="<script>alert('ご注文税込み金額が1万円以下の為、お受けすることができません。'); history.back();</script>", status_code=400)
 
     quotation.total_amount = final_total_tax_excl
@@ -1210,8 +1210,8 @@ async def create_direct_order(
             if product:
                 product.stock_quantity -= qty
     
-    final_total_tax_excl = total * (1 - (discount_rate / 100))
-    if customer_rank != "RETAIL" and (final_total_tax_excl * 1.1) < 10000:
+    final_total_tax_excl = int(total * (1 - (discount_rate / 100)))
+    if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
         return HTMLResponse(content="<script>alert('ご注文税込み金額が1万円以下の為、お受けすることができません。'); history.back();</script>", status_code=400)
 
     quotation.total_amount = final_total_tax_excl
@@ -1314,8 +1314,8 @@ async def update_order(
             if product:
                 product.stock_quantity -= qty
     
-    final_total_tax_excl = total * (1 - (discount_rate / 100))
-    if customer_rank != "RETAIL" and (final_total_tax_excl * 1.1) < 10000:
+    final_total_tax_excl = int(total * (1 - (discount_rate / 100)))
+    if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
         return HTMLResponse(content="<script>alert('ご注文税込み金額が1万円以下の為、お受けすることができません。'); history.back();</script>", status_code=400)
 
     quotation.total_amount = final_total_tax_excl
