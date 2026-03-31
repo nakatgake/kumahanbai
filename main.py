@@ -547,6 +547,7 @@ async def update_product(
     price_d: float = Form(0.0),
     price_e: float = Form(0.0),
     stock_quantity: int = Form(0),
+    stock_add: int = Form(0),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -561,7 +562,8 @@ async def update_product(
         product.price_c = price_c
         product.price_d = price_d
         product.price_e = price_e
-        product.stock_quantity = stock_quantity
+        # 入庫加算: 現在の在庫に入庫数を加算する
+        product.stock_quantity = product.stock_quantity + stock_add
         db.commit()
     return RedirectResponse(url="/products", status_code=303)
 
@@ -1679,6 +1681,17 @@ async def update_invoice(
 async def delete_invoice(invoice_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
     invoice = db.query(models.Invoice).get(invoice_id)
     if invoice:
+        # 請求書に紐づく受注の明細から在庫を戻す
+        order = invoice.order
+        if order and order.quotation:
+            for item in order.quotation.items:
+                if item.product_id:
+                    product = db.query(models.Product).get(item.product_id)
+                    if product:
+                        product.stock_quantity += item.quantity
+        # 紐づく受注も削除（受注がなくなれば請求も不要）
+        if order:
+            db.delete(order)
         db.delete(invoice)
         db.commit()
     response = RedirectResponse(url="/invoices", status_code=303)
@@ -2592,7 +2605,7 @@ async def convert_agency_order_to_main(
     db.add(new_quote)
     db.flush()
     
-    # 2. Create Items
+    # 2. Create Items + 在庫減算
     for item in agency_order.items:
         qi = models.QuotationItem(
             quotation_id=new_quote.id,
@@ -2603,6 +2616,11 @@ async def convert_agency_order_to_main(
             subtotal=item.subtotal
         )
         db.add(qi)
+        # 在庫を減算
+        if item.product_id:
+            product = db.query(models.Product).get(item.product_id)
+            if product:
+                product.stock_quantity -= item.quantity
     
     # 3. Create Order
     new_order = models.Order(

@@ -42,10 +42,27 @@
                 <input type="number" name="price_e" required value="{{ product.price_e if product else 0 }}" placeholder="750">
             </div>
         </div>
-        <div class="form-group">
-            <label>初期在庫 / 現在庫</label>
-            <input type="number" name="stock_quantity" value="{{ product.stock_quantity if product else 0 }}">
+        {% if product %}
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: end;">
+            <div class="form-group">
+                <label>現在の在庫数</label>
+                <input type="number" value="{{ product.stock_quantity }}" readonly
+                    style="background: #f0f0f0; font-weight: bold; font-size: 1.1rem; color: #2c3e50;">
+                <input type="hidden" name="stock_quantity" value="{{ product.stock_quantity }}">
+            </div>
+            <div class="form-group">
+                <label style="color: #27ae60; font-weight: bold;">📦 入庫数（追加分）</label>
+                <input type="number" name="stock_add" value="0" min="0" placeholder="0"
+                    style="border: 2px solid #27ae60;">
+                <small style="color: #666;">入力した数量が現在の在庫に加算されます</small>
+            </div>
         </div>
+        {% else %}
+        <div class="form-group">
+            <label>初期在庫数</label>
+            <input type="number" name="stock_quantity" value="0" min="0">
+        </div>
+        {% endif %}
         <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">保存する</button>
     </form>
     {% if product %}
