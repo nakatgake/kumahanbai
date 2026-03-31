@@ -11,13 +11,13 @@
         <div class="form-group">
             <label>顧客選択</label>
             <div style="position: relative;">
-                <input type="text" id="customer-search" 
-                       placeholder="顧客名・会社名で検索..." 
-                       value="{{ (order.quotation.customer.company or '') + (' (' + order.quotation.customer.name + ')' if order.quotation.customer.name else '') if order and order.quotation.customer else '' }}"
-                       hx-get="/api/customers/search" 
-                       hx-trigger="keyup changed delay:300ms" 
-                       hx-target="#customer-search-results"
-                       style="width: 100%;">
+                    <input type="text" id="customer-search" name="q"
+                           placeholder="顧客名・会社名で検索..." 
+                           value="{{ (order.quotation.customer.company or '') + (' (' + order.quotation.customer.name + ')' if order.quotation.customer.name else '') if order and order.quotation.customer else '' }}"
+                           hx-get="/api/customers/search" 
+                           hx-trigger="keyup changed delay:300ms" 
+                           hx-target="#customer-search-results"
+                           style="width: 100%;">
                 <input type="hidden" name="customer_id" id="selected-customer-id" value="{{ order.quotation.customer_id if order and order.quotation else '' }}" required>
                 <div id="customer-search-results" class="search-results-dropdown"></div>
             </div>
@@ -92,7 +92,7 @@
 
         <div style="margin-top: 1rem; display: flex; gap: 1rem;">
             <div style="position: relative; flex: 1;">
-                <input type="text" id="product-search" 
+                <input type="text" id="product-search" name="q"
                        placeholder="商品台帳から検索して追加..." 
                        hx-get="/api/products/search" 
                        hx-trigger="keyup changed delay:300ms" 
