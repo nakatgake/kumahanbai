@@ -20,6 +20,7 @@ from passlib.context import CryptContext
 from itsdangerous import URLSafeSerializer
 from fastapi import HTTPException
 import smtplib
+import ssl
 from email.message import EmailMessage
 
 # Create database tables
@@ -1946,13 +1947,20 @@ async def send_order_notification_email(order: models.AgencyOrder, db: Session):
         smtp_user = s.get("smtp_user")
         smtp_pass = s.get("smtp_pass")
 
-        # Use dry-run logic if needed or just catch all
-        with smtplib.SMTP(str(smtp_host), smtp_port, timeout=10) as server:
-            if smtp_port == 587:
-                server.starttls()
-            if smtp_user and smtp_pass:
-                server.login(smtp_user, smtp_pass)
-            server.send_message(msg)
+        # SMTP Connection
+        context = ssl.create_default_context()
+        if smtp_port == 465:
+            with smtplib.SMTP_SSL(str(smtp_host), smtp_port, timeout=10, context=context) as server:
+                if smtp_user and smtp_pass:
+                    server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(str(smtp_host), smtp_port, timeout=10) as server:
+                if smtp_port == 587:
+                    server.starttls(context=context)
+                if smtp_user and smtp_pass:
+                    server.login(smtp_user, smtp_pass)
+                server.send_message(msg)
         print(f"Email sent to {target}")
     except Exception as e:
         print(f"Failed to send email: {e}")
@@ -2691,12 +2699,14 @@ async def send_customer_account_info(
         msg.attach(MIMEText(html, "html"))
         
         import smtplib
+        import ssl
+        context = ssl.create_default_context()
         server = None
         if smtp_port == 465:
-            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=10)
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=10, context=context)
         else:
             server = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
-            server.starttls()
+            server.starttls(context=context)
         
         server.login(smtp_user, smtp_pass)
         server.send_message(msg)
@@ -2784,12 +2794,13 @@ async def dispatch_invoices_email(
 
     success_count = 0
     server = None
+    context = ssl.create_default_context()
     try:
         if smtp_port == 465:
-            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=10)
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=10, context=context)
         else:
             server = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
-            server.starttls()
+            server.starttls(context=context)
         server.login(smtp_user, smtp_pass)
         
         bank_info = settings.get("bank_info", "")
@@ -3148,12 +3159,13 @@ async def test_smtp_connection(
 ):
     import smtplib
     port = int(smtp_port) if smtp_port.isdigit() else 587
+    context = ssl.create_default_context()
     try:
         if port == 465:
-            server = smtplib.SMTP_SSL(smtp_host, port, timeout=10)
+            server = smtplib.SMTP_SSL(smtp_host, port, timeout=10, context=context)
         else:
             server = smtplib.SMTP(smtp_host, port, timeout=10)
-            server.starttls()
+            server.starttls(context=context)
         
         server.login(smtp_user, smtp_pass)
         server.quit()
