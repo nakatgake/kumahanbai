@@ -1955,12 +1955,13 @@ async def send_order_notification_email(order: models.AgencyOrder, db: Session):
         # SMTP Connection
         context = ssl.create_default_context()
         if smtp_port == 465:
-            with smtplib.SMTP_SSL(str(smtp_host), smtp_port, timeout=10, context=context) as server:
+            # timeoutを30秒に延長し、server_hostnameを明示
+            with smtplib.SMTP_SSL(str(smtp_host), smtp_port, timeout=30, context=context) as server:
                 if smtp_user and smtp_pass:
                     server.login(smtp_user, smtp_pass)
                 server.send_message(msg)
         else:
-            with smtplib.SMTP(str(smtp_host), smtp_port, timeout=10) as server:
+            with smtplib.SMTP(str(smtp_host), smtp_port, timeout=30) as server:
                 if smtp_port == 587:
                     server.starttls(context=context)
                 if smtp_user and smtp_pass:
@@ -3167,10 +3168,13 @@ async def test_smtp_connection(
     context = ssl.create_default_context()
     try:
         if port == 465:
-            server = smtplib.SMTP_SSL(smtp_host, port, timeout=10, context=context)
+            # timeoutを30秒に延長し、server_hostnameを明示
+            server = smtplib.SMTP_SSL(smtp_host, port, timeout=30, context=context)
         else:
-            server = smtplib.SMTP(smtp_host, port, timeout=10)
-            server.starttls(context=context)
+            server = smtplib.SMTP(smtp_host, port, timeout=30)
+            server.set_debuglevel(1)  # ログに詳細出力 (必要に応じて)
+            if port == 587:
+                server.starttls(context=context)
         
         server.login(smtp_user, smtp_pass)
         server.quit()
@@ -3185,10 +3189,13 @@ async def test_smtp_connection(
             "active_page": "settings_admin"
         })
     except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        print(f"SMTP Test Error Details:\n{error_detail}")
         return templates.TemplateResponse(request=request, name="admin_settings.html", context={
             "request": request,
             "user": user,
-            "error": f"接続テスト失敗: {str(e)}",
+            "error": f"接続テスト失敗 ({type(e).__name__}): {str(e)}",
             "settings": {
                 "smtp_host": smtp_host, "smtp_port": smtp_port, 
                 "smtp_user": smtp_user, "smtp_pass": smtp_pass
