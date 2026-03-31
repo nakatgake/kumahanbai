@@ -2676,7 +2676,7 @@ async def send_customer_account_info(
         msg["From"] = smtp_from if smtp_from else "no-reply@kumanomori.jp"
         msg["To"] = customer.email
         
-        login_url = "https://kumanomori-production.up.railway.app/agency/login" # 本番URL
+        login_url = "https://app.kumanomorikaken.co.jp/agency/login" # 本番URL
         
         html = f"""
         <html>
