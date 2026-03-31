@@ -269,12 +269,11 @@
 
     function toggleBulkDiscount() {
         const isBulk = document.getElementById('is-bulk-discount').checked;
-        const rank = document.getElementById('selected-customer-rank').value;
         const rateInput = document.getElementById('discount-rate');
         
-        if (isBulk && rank === 'RETAIL') {
+        if (isBulk) {
             rateInput.value = 5;
-        } else if (!isBulk) {
+        } else {
             rateInput.value = 0;
         }
         updateGrandTotal();
