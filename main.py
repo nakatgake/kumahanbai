@@ -567,6 +567,19 @@ async def update_product(
         db.commit()
     return RedirectResponse(url="/products", status_code=303)
 
+@app.post("/products/{product_id}/add_stock")
+async def add_stock(
+    product_id: int,
+    quantity: int = Form(...),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    product = db.query(models.Product).get(product_id)
+    if product and quantity > 0:
+        product.stock_quantity += quantity
+        db.commit()
+    return RedirectResponse(url="/products", status_code=303)
+
 @app.post("/products/delete/{product_id}")
 async def delete_product(
     product_id: int, 
