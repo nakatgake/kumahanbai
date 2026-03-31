@@ -3163,19 +3163,24 @@ async def test_smtp_connection(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
-    import smtplib
+    import smtplib, io, sys
     port = int(smtp_port) if smtp_port.isdigit() else 587
     context = ssl.create_default_context()
+    
+    debug_stream = io.StringIO()
+    old_stderr = sys.stderr
+    sys.stderr = debug_stream
+    
     try:
         if port == 465:
             # timeoutを30秒に延長し、server_hostnameを明示
             server = smtplib.SMTP_SSL(smtp_host, port, timeout=30, context=context)
         else:
             server = smtplib.SMTP(smtp_host, port, timeout=30)
-            server.set_debuglevel(1)  # ログに詳細出力 (必要に応じて)
             if port == 587:
                 server.starttls(context=context)
         
+        server.set_debuglevel(1)
         server.login(smtp_user, smtp_pass)
         server.quit()
         return templates.TemplateResponse(request=request, name="admin_settings.html", context={
@@ -3189,19 +3194,27 @@ async def test_smtp_connection(
             "active_page": "settings_admin"
         })
     except Exception as e:
+        sys.stderr = old_stderr
+        debug_logs = debug_stream.getvalue()
         import traceback
         error_detail = traceback.format_exc()
         print(f"SMTP Test Error Details:\n{error_detail}")
+        print(f"SMTP Debug Logs:\n{debug_logs}")
+        
         return templates.TemplateResponse(request=request, name="admin_settings.html", context={
             "request": request,
             "user": user,
             "error": f"接続テスト失敗 ({type(e).__name__}): {str(e)}",
+            "debug_logs": debug_logs, # 画面に通信ログを表示
             "settings": {
                 "smtp_host": smtp_host, "smtp_port": smtp_port, 
                 "smtp_user": smtp_user, "smtp_pass": smtp_pass
             },
             "active_page": "settings_admin"
         })
+    finally:
+        if sys.stderr == debug_stream:
+            sys.stderr = old_stderr
 
 
 if __name__ == "__main__":

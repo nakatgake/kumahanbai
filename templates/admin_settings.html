@@ -11,6 +11,18 @@
         {{ success }}
     </div>
     {% endif %}
+
+    {% if error %}
+    <div style="padding: 1rem; margin-bottom: 1rem; background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; border-radius: 4px;">
+        <div style="font-weight: bold; margin-bottom: 0.5rem;">🚨 {{ error }}</div>
+        {% if debug_logs %}
+        <details>
+            <summary style="cursor: pointer; font-size: 0.85rem; color: #721c24;">通信ログ詳細を確認する</summary>
+            <pre style="margin-top: 0.5rem; padding: 0.8rem; background: #333; color: #fff; font-size: 0.75rem; border-radius: 4px; overflow-x: auto; white-space: pre-wrap;">{{ debug_logs }}</pre>
+        </details>
+        {% endif %}
+    </div>
+    {% endif %}
     
     <form action="/admin/settings" method="post">
         <h3 style="margin-bottom: 1rem; color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 0.5rem;">📧 メール通知設定（SMTP）</h3>
