@@ -264,12 +264,12 @@
             const pricesData = priceInput.getAttribute('data-prices');
             if (pricesData) {
                 const prices = JSON.parse(pricesData);
-                let newPrice = prices.retail;
-                if (rank === 'RANK_A') newPrice = prices.a ?? prices.retail;
-                else if (rank === 'RANK_B') newPrice = prices.b ?? prices.retail;
-                else if (rank === 'RANK_C') newPrice = prices.c ?? prices.retail;
-                else if (rank === 'RANK_D') newPrice = prices.d ?? prices.retail;
-                else if (rank === 'RANK_E') newPrice = prices.e ?? prices.retail;
+                let newPrice = prices.retail || 0;
+                if (rank === 'RANK_A') newPrice = prices.a !== undefined && prices.a !== null ? prices.a : (prices.retail || 0);
+                else if (rank === 'RANK_B') newPrice = prices.b !== undefined && prices.b !== null ? prices.b : (prices.retail || 0);
+                else if (rank === 'RANK_C') newPrice = prices.c !== undefined && prices.c !== null ? prices.c : (prices.retail || 0);
+                else if (rank === 'RANK_D') newPrice = prices.d !== undefined && prices.d !== null ? prices.d : (prices.retail || 0);
+                else if (rank === 'RANK_E') newPrice = prices.e !== undefined && prices.e !== null ? prices.e : (prices.retail || 0);
                 
                 priceInput.value = newPrice;
                 updateRowSubtotal(row.id);
@@ -291,12 +291,12 @@
 
     function selectProduct(id, name, prices) {
         const rank = document.getElementById('selected-customer-rank').value || 'RETAIL';
-        let price = prices.retail;
-        if (rank === 'RANK_A') price = prices.a ?? prices.retail;
-        else if (rank === 'RANK_B') price = prices.b ?? prices.retail;
-        else if (rank === 'RANK_C') price = prices.c ?? prices.retail;
-        else if (rank === 'RANK_D') price = prices.d ?? prices.retail;
-        else if (rank === 'RANK_E') price = prices.e ?? prices.retail;
+        let price = prices.retail || 0;
+        if (rank === 'RANK_A') price = prices.a !== undefined && prices.a !== null ? prices.a : (prices.retail || 0);
+        else if (rank === 'RANK_B') price = prices.b !== undefined && prices.b !== null ? prices.b : (prices.retail || 0);
+        else if (rank === 'RANK_C') price = prices.c !== undefined && prices.c !== null ? prices.c : (prices.retail || 0);
+        else if (rank === 'RANK_D') price = prices.d !== undefined && prices.d !== null ? prices.d : (prices.retail || 0);
+        else if (rank === 'RANK_E') price = prices.e !== undefined && prices.e !== null ? prices.e : (prices.retail || 0);
         const tableBody = document.getElementById('line-items');
         const rowId = 'row-' + id + '-' + Date.now();
         const newRow = document.createElement('tr');

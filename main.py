@@ -1702,8 +1702,8 @@ async def search_products(q: str = "", db: Session = Depends(get_db), user: mode
     for p in products:
         # p.name をエスケープ (JS 用)
         safe_name = p.name.replace("'", "\\'")
-        # prices も安全に文字列化
-        prices_js = f"{{retail: {p.price_retail}, a: {p.price_a}, b: {p.price_b}, c: {p.price_c}, d: {p.price_d}, e: {p.price_e}}}"
+        # prices も安全に文字列化 (NULL の場合は 0 に置換)
+        prices_js = f"{{retail: {p.price_retail or 0}, a: {p.price_a or 0}, b: {p.price_b or 0}, c: {p.price_c or 0}, d: {p.price_d or 0}, e: {p.price_e or 0}}}"
         html += f'<div class="search-result" onclick="selectProduct({p.id}, \'{safe_name}\', {prices_js})">{p.name} ({p.code}) - ¥{p.price_retail:,.0f}</div>'
     return HTMLResponse(content=html if html else "<div>見つかりませんでした</div>")
 
