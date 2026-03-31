@@ -916,8 +916,10 @@ async def copy_quotation(id: int, db: Session = Depends(get_db), user: models.Us
     db.add(new_quote)
     db.flush()
     
-    # Copy items
+    # Copy items (Skip automated shipping fee as it will be re-added by JS if needed)
     for item in original.items:
+        if item.description == "運賃（自動追加）":
+            continue
         new_item = models.QuotationItem(
             quotation_id=new_quote.id,
             product_id=item.product_id,
@@ -1387,7 +1389,10 @@ async def copy_order(id: int, db: Session = Depends(get_db), user: models.User =
     db.add(new_quote)
     db.flush()
     
+    # Copy items (Skip automated shipping fee as it will be re-added by JS if needed)
     for item in original_quote.items:
+        if item.description == "運賃（自動追加）":
+            continue
         new_item = models.QuotationItem(
             quotation_id=new_quote.id,
             product_id=item.product_id,
