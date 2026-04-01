@@ -592,6 +592,9 @@ async def create_customer(
     invoice_delivery_method: str = Form("POSTAL"),
     login_id: Optional[str] = Form(None),
     agency_password: Optional[str] = Form(None),
+    closing_day: Optional[int] = Form(None),
+    payment_term_months: int = Form(1),
+    payment_day: Optional[int] = Form(None),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -642,6 +645,9 @@ async def update_customer(
     invoice_delivery_method: str = Form("POSTAL"),
     login_id: Optional[str] = Form(None),
     agency_password: Optional[str] = Form(None),
+    closing_day: Optional[int] = Form(None),
+    payment_term_months: int = Form(1),
+    payment_day: Optional[int] = Form(None),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
