@@ -1707,15 +1707,6 @@ async def update_order(
     quotation.is_bulk_discount = is_bulk_discount
     order.memo = memo
     quotation.memo = memo
-
-    # もし納品済みで入金請求書データが作られている場合は、それも更新する
-    if order.invoice:
-        order.invoice.total_amount = final_total_tax_excl
-        order.invoice.discount_rate = discount_rate
-        order.invoice.is_bulk_discount = is_bulk_discount
-        order.invoice.issue_date = order.order_date
-        order.invoice.due_date = order.order_date + datetime.timedelta(days=30)
-        
     db.commit()
     return RedirectResponse(url="/orders", status_code=303)
 
