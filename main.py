@@ -29,6 +29,14 @@ except ImportError:
     print("Warning: APScheduler or date-util not found. Automated billing is disabled.")
     HAS_SCHEDULER = False
 
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from utils.date_utils import is_closing_day, calculate_payment_date, next_business_day
+    HAS_SCHEDULER = True
+except ImportError:
+    print("Warning: APScheduler or date-util not found. Automated billing is disabled.")
+    HAS_SCHEDULER = False
+
 from email.message import EmailMessage
 from utils.email import send_notification
 
@@ -335,7 +343,6 @@ async def shutdown_event():
     if HAS_SCHEDULER:
         scheduler.shutdown()
         print("APScheduler shutdown")
-
 # --- Dashboard ---
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(
@@ -585,9 +592,6 @@ async def create_customer(
     invoice_delivery_method: str = Form("POSTAL"),
     login_id: Optional[str] = Form(None),
     agency_password: Optional[str] = Form(None),
-    closing_day: Optional[int] = Form(None),
-    payment_term_months: int = Form(1),
-    payment_day: Optional[int] = Form(None),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -638,9 +642,6 @@ async def update_customer(
     invoice_delivery_method: str = Form("POSTAL"),
     login_id: Optional[str] = Form(None),
     agency_password: Optional[str] = Form(None),
-    closing_day: Optional[int] = Form(None),
-    payment_term_months: int = Form(1),
-    payment_day: Optional[int] = Form(None),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -1725,6 +1726,7 @@ async def update_order(
         order.invoice.discount_rate = discount_rate
         order.invoice.is_bulk_discount = is_bulk_discount
         order.invoice.issue_date = order.order_date
+        # 支払期限は、注文日に基づいて再計算（簡易的に30日後、または顧客設定があればそれに合わせるべきだが、現状は30日で維持）
         order.invoice.due_date = order.order_date + datetime.timedelta(days=30)
         
     db.commit()
@@ -2462,6 +2464,17 @@ async def agency_logout():
     response = RedirectResponse(url="/agency/login")
     response.delete_cookie("agency_session")
     return response
+
+@app.get("/agency/manual", response_class=HTMLResponse)
+async def agency_manual(
+    request: Request,
+    agency: models.Customer = Depends(get_active_agency)
+):
+    """代理店向け利用マニュアル"""
+    return templates.TemplateResponse(request=request, name="agency/manual.html", context={
+        "request": request,
+        "agency": agency
+    })
 
 # --- Agency Dashboard ---
 @app.get("/agency/", response_class=HTMLResponse)
