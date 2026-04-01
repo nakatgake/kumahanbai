@@ -2327,6 +2327,17 @@ async def agency_logout():
     response.delete_cookie("agency_session")
     return response
 
+@app.get("/agency/manual", response_class=HTMLResponse)
+async def agency_manual(
+    request: Request,
+    agency: models.Customer = Depends(get_active_agency)
+):
+    """代理店向け利用マニュアル"""
+    return templates.TemplateResponse(request=request, name="agency/manual.html", context={
+        "request": request,
+        "agency": agency
+    })
+
 # --- Agency Dashboard ---
 @app.get("/agency/", response_class=HTMLResponse)
 async def agency_dashboard(
