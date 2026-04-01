@@ -208,6 +208,10 @@ def get_password_hash(password):
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
+
+class NotAuthenticatedException(Exception):
+    pass
+
 async def get_current_user(request: Request, db: Session = Depends(get_db)):
     session_token = request.cookies.get("session")
     if not session_token:
@@ -219,17 +223,16 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
     except:
         return None
 
-class NotAuthenticatedException(Exception):
-    pass
+async def get_active_user(request: Request, db: Session = Depends(get_db)):
+    user = await get_current_user(request, db)
+    if not user:
+        if request.url.path not in ["/login", "/init-admin"] and not request.url.path.startswith("/static"):
+            raise NotAuthenticatedException()
+    return user
 
 import traceback
 
 # 1. エラーを記録するためのグローバル変数
-LAST_ERROR = "No errors logged yet."
-
-import traceback
-
-# 1. エラーを記録するためのグローバル変数 (LOC: DESKTOP_ANTIGRAVITY)
 LAST_ERROR = "No errors logged yet."
 
 app = FastAPI()
@@ -239,38 +242,17 @@ async def global_exception_handler(request: Request, exc: Exception):
     global LAST_ERROR
     LAST_ERROR = traceback.format_exc()
     print(f"DEBUG_LOG: {LAST_ERROR}")
-    return HTMLResponse(content=f"<h1>Internal Server Error</h1><p>Please check /debug-logs</p><pre>{LAST_ERROR}</pre>", status_code=500)
+    return HTMLResponse(content=f"<h1>Internal Server Error</h1><p>Please check <a href='/debug-logs'>/debug-logs</a></p><pre>{LAST_ERROR}</pre>", status_code=500)
 
 @app.get("/debug-logs", response_class=HTMLResponse)
 async def view_debug_logs(user: models.User = Depends(get_active_user)):
     if user and not user.is_admin:
-        return "Access Denied"
-    return f"<h1>Last Error Traceback (LOC: DESKTOP_ANTIGRAVITY)</h1><pre>{LAST_ERROR}</pre>"
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    global LAST_ERROR
-    LAST_ERROR = traceback.format_exc()
-    print(f"DEBUG_LOG: {LAST_ERROR}")
-    return HTMLResponse(content=f"Internal Server Error. Please check /debug-logs", status_code=500)
-
-@app.get("/debug-logs", response_class=HTMLResponse)
-async def view_debug_logs(user: models.User = Depends(get_active_user)):
-    # 管理者のみ閲覧可能
-    if not user.is_admin:
         return "Access Denied"
     return f"<h1>Last Error Traceback</h1><pre>{LAST_ERROR}</pre>"
 
 @app.exception_handler(NotAuthenticatedException)
 async def auth_exception_handler(request: Request, exc: NotAuthenticatedException):
     return RedirectResponse(url="/login")
-
-async def get_active_user(request: Request, db: Session = Depends(get_db)):
-    user = await get_current_user(request, db)
-    if not user:
-        if request.url.path not in ["/login", "/init-admin"] and not request.url.path.startswith("/static"):
-            raise NotAuthenticatedException()
-    return user
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
