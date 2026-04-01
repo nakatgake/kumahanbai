@@ -21,10 +21,16 @@ from itsdangerous import URLSafeSerializer
 from fastapi import HTTPException
 import smtplib
 import ssl
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from utils.date_utils import is_closing_day, calculate_payment_date, next_business_day
+    HAS_SCHEDULER = True
+except ImportError:
+    print("Warning: APScheduler or date-util not found. Automated billing is disabled.")
+    HAS_SCHEDULER = False
+
 from email.message import EmailMessage
-from apscheduler.schedulers.background import BackgroundScheduler
 from utils.email import send_notification
-from utils.date_utils import is_closing_day, calculate_payment_date, next_business_day
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
@@ -312,18 +318,23 @@ def closing_notification_job():
         db.close()
 
 # APScheduler 設定
-scheduler = BackgroundScheduler(timezone="Asia/Tokyo")
-scheduler.add_job(closing_notification_job, 'cron', hour=8, minute=0)
+if HAS_SCHEDULER:
+    scheduler = BackgroundScheduler(timezone="Asia/Tokyo")
+    scheduler.add_job(closing_notification_job, 'cron', hour=8, minute=0)
 
 @app.on_event("startup")
 async def startup_event():
-    scheduler.start()
-    print("APScheduler started on startup (Closing Notification Job: 08:00 JST)")
+    if HAS_SCHEDULER:
+        scheduler.start()
+        print("APScheduler started on startup (Closing Notification Job: 08:00 JST)")
+    else:
+        print("APScheduler skipped (missing libraries)")
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    scheduler.shutdown()
-    print("APScheduler shutdown")
+    if HAS_SCHEDULER:
+        scheduler.shutdown()
+        print("APScheduler shutdown")
 
 # --- Dashboard ---
 @app.get("/", response_class=HTMLResponse)
