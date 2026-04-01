@@ -23,7 +23,7 @@ import smtplib
 import ssl
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
-    from utils.date_utils import is_closing_day, calculate_payment_date, next_business_day
+    from utils.date_utils import is_closing_day, calculate_payment_date, next_business_day, get_next_closing_date
     HAS_SCHEDULER = True
 except ImportError:
     print("Warning: APScheduler or date-util not found. Automated billing is disabled.")
@@ -31,7 +31,7 @@ except ImportError:
 
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
-    from utils.date_utils import is_closing_day, calculate_payment_date, next_business_day
+    from utils.date_utils import is_closing_day, calculate_payment_date, next_business_day, get_next_closing_date
     HAS_SCHEDULER = True
 except ImportError:
     print("Warning: APScheduler or date-util not found. Automated billing is disabled.")
@@ -1503,7 +1503,11 @@ async def update_order(
         order.invoice.is_bulk_discount = is_bulk_discount
         order.invoice.issue_date = order.order_date
         # 支払期限は、注文日に基づいて再計算（簡易的に30日後、または顧客設定があればそれに合わせるべきだが、現状は30日で維持）
-        order.invoice.due_date = order.order_date + datetime.timedelta(days=30)
+        # 支払期限は、顧客の設定に基づいて再計算
+        cust = order.quotation.customer
+        closing_date = get_next_closing_date(order.order_date.date(), cust.closing_day)
+        due_date = calculate_payment_date(closing_date, cust.payment_term_months or 1, cust.payment_day or 31)
+        order.invoice.due_date = datetime.datetime.combine(due_date, datetime.time.min)
         
     db.commit()
     return RedirectResponse(url="/orders", status_code=303)
@@ -1710,7 +1714,14 @@ async def create_invoice(order_id: int, db: Session = Depends(get_db), user: mod
         order_id=order.id,
         invoice_number=order.order_number.replace("ORD-", "INV-"),
         issue_date=order.order_date, # Default to order date
-        due_date=order.order_date + datetime.timedelta(days=30),
+        due_date=datetime.datetime.combine(
+            calculate_payment_date(
+                get_next_closing_date(order.order_date.date(), order.quotation.customer.closing_day),
+                order.quotation.customer.payment_term_months or 1,
+                order.quotation.customer.payment_day or 31
+            ),
+            datetime.time.min
+        ),
         total_amount=order.total_amount,
         discount_rate=order.discount_rate,
         is_bulk_discount=order.is_bulk_discount,
@@ -3286,7 +3297,14 @@ async def generate_monthly_invoices(
             order_id=shadow_order.id,
             invoice_number=inv_number,
             issue_date=first_of_current + datetime.timedelta(days=1),  # 翌月2日
-            due_date=first_of_current + datetime.timedelta(days=30),
+            due_date=datetime.datetime.combine(
+                calculate_payment_date(
+                    get_next_closing_date(first_of_current.date(), agency.closing_day),
+                    agency.payment_term_months or 1,
+                    agency.payment_day or 31
+                ),
+                datetime.time.min
+            ),
             total_amount=total,
             status=models.InvoiceStatus.UNPAID,
             memo=f"{last_month_start.strftime('%Y年%m月')}分 月次集計請求書"

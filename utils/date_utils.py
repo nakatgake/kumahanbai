@@ -45,3 +45,21 @@ def next_business_day(target_date: date) -> date:
     while target_date.weekday() >= 5:
         target_date += timedelta(days=1)
     return target_date
+
+def get_next_closing_date(base_date: date, closing_day: int) -> date:
+    """
+    base_date 以降で最も近い締め日を返します。
+    closing_day=None または 0 の場合は、base_date をそのまま締め日として扱います（都度締め）。
+    """
+    if not closing_day:
+        return base_date
+        
+    # その月の暫定締め日（31日の場合は月末調整含む）
+    potential_closing = get_effective_date(base_date.year, base_date.month, closing_day)
+    
+    # すでにその月の締め日を過ぎている場合、翌月の締め日を返す
+    if base_date > potential_closing:
+        next_month = base_date + relativedelta(months=1)
+        return get_effective_date(next_month.year, next_month.month, closing_day)
+    
+    return potential_closing
