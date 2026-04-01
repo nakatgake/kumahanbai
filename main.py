@@ -227,7 +227,25 @@ import traceback
 # 1. エラーを記録するためのグローバル変数
 LAST_ERROR = "No errors logged yet."
 
+import traceback
+
+# 1. エラーを記録するためのグローバル変数 (LOC: DESKTOP_ANTIGRAVITY)
+LAST_ERROR = "No errors logged yet."
+
 app = FastAPI()
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    global LAST_ERROR
+    LAST_ERROR = traceback.format_exc()
+    print(f"DEBUG_LOG: {LAST_ERROR}")
+    return HTMLResponse(content=f"<h1>Internal Server Error</h1><p>Please check /debug-logs</p><pre>{LAST_ERROR}</pre>", status_code=500)
+
+@app.get("/debug-logs", response_class=HTMLResponse)
+async def view_debug_logs(user: models.User = Depends(get_active_user)):
+    if user and not user.is_admin:
+        return "Access Denied"
+    return f"<h1>Last Error Traceback (LOC: DESKTOP_ANTIGRAVITY)</h1><pre>{LAST_ERROR}</pre>"
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
