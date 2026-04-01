@@ -52,6 +52,44 @@
             <input type="url" name="website_url" value="{{ customer.website_url if customer else '' }}" placeholder="https://example.com">
         </div>
 
+        <!-- 請求・支払設定 -->
+        <div style="margin-top: 2rem; padding: 1.5rem; border: 1px solid #c8e6c9; border-radius: 8px; background-color: #e8f5e9;">
+            <h3 style="color: #2e7d32; margin-bottom: 1rem; font-size: 1.1rem;">📅 請求・支払設定</h3>
+            <div class="form-group">
+                <label>締め日</label>
+                <select name="closing_day">
+                    <option value="">未設定</option>
+                    {% for i in range(1, 31) %}
+                    <option value="{{ i }}" {% if customer and customer.closing_day == i %}selected{% endif %}>{{ i }}日</option>
+                    {% endfor %}
+                    <option value="31" {% if customer and customer.closing_day == 31 %}selected{% endif %}>月末（31日）</option>
+                </select>
+                <small style="color: #666;">※31日を指定すると、2月や30日の月でも自動的に最終日に調整されます。</small>
+            </div>
+            
+            <div style="display: flex; gap: 1rem; align-items: flex-end;">
+                <div class="form-group" style="flex: 1;">
+                    <label>支払月</label>
+                    <select name="payment_term_months">
+                        <option value="0" {% if customer and customer.payment_term_months == 0 %}selected{% endif %}>当月</option>
+                        <option value="1" {% if not customer or customer.payment_term_months == 1 %}selected{% endif %}>翌月</option>
+                        <option value="2" {% if customer and customer.payment_term_months == 2 %}selected{% endif %}>翌々月</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label>支払日</label>
+                    <select name="payment_day">
+                        <option value="">未設定</option>
+                        {% for i in range(1, 31) %}
+                        <option value="{{ i }}" {% if customer and customer.payment_day == i %}selected{% endif %}>{{ i }}日</option>
+                        {% endfor %}
+                        <option value="31" {% if customer and customer.payment_day == 31 %}selected{% endif %}>月末（31日）</option>
+                    </select>
+                </div>
+            </div>
+            <small style="color: #666;">例：月末締め・翌々月15日払いの場合は「締め日：月末」「支払月：翌々月」「支払日：15日」と設定してください。</small>
+        </div>
+
         <!-- 代理店設定 -->
         <div style="margin-top: 2rem; padding: 1.5rem; border: 1px solid #b3e5fc; border-radius: 8px; background-color: #e1f5fe;">
             <h3 style="color: #0277bd; margin-bottom: 1rem; font-size: 1.1rem;">🏢 代理店設定</h3>

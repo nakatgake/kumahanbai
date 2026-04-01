@@ -22,6 +22,9 @@ from fastapi import HTTPException
 import smtplib
 import ssl
 from email.message import EmailMessage
+from apscheduler.schedulers.background import BackgroundScheduler
+from utils.email import send_notification
+from utils.date_utils import is_closing_day, calculate_payment_date, next_business_day
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
@@ -220,6 +223,107 @@ async def get_active_user(request: Request, db: Session = Depends(get_db)):
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
+def closing_notification_job():
+    """毎日朝8時に実行される、締め日の判定と請求書自動発行・メール通知処理"""
+    db = SessionLocal()
+    try:
+        today = datetime.date.today()
+        # 全顧客を取得して締め日を判定（本来はクエリで絞るべきだが、月末31日判定など複雑なため全取得）
+        customers = db.query(models.Customer).all()
+        for cust in customers:
+            if not cust.closing_day:
+                continue
+            
+            if is_closing_day(today, cust.closing_day):
+                # この顧客の未請求（Invoiceがない）な受注を抽出
+                # 代理店発注ではなく、営業が作成したOrderを対象とする
+                orders = db.query(models.Order).join(models.Quotation).filter(
+                    models.Quotation.customer_id == cust.id,
+                    models.Order.status == models.OrderStatus.PENDING, # 未出荷または出荷済みだが未請求
+                    models.Order.invoice == None
+                ).all()
+                
+                if not orders:
+                    continue
+                
+                # 請求書を自動発行し、通知メールを送信
+                invoice_count = 0
+                total_amount = 0
+                order_numbers = []
+                
+                for order in orders:
+                    # 支払期限の計算
+                    # payment_term_months (0:当月, 1:翌月, 2:翌々月)
+                    # payment_day (1-31)
+                    due_date = calculate_payment_date(today, cust.payment_term_months or 1, cust.payment_day or 31)
+                    due_date = next_business_day(due_date)
+                    
+                    inv_num = order.order_number.replace("ORD-", "INV-")
+                    # 番号重複を避けるためのチェック
+                    existing = db.query(models.Invoice).filter_by(invoice_number=inv_num).first()
+                    if existing:
+                        inv_num = f"{inv_num}-AUTO-{today.strftime('%m%d')}"
+
+                    invoice = models.Invoice(
+                        order_id=order.id,
+                        invoice_number=inv_num,
+                        issue_date=datetime.datetime.combine(today, datetime.time.min),
+                        due_date=datetime.datetime.combine(due_date, datetime.time.min),
+                        total_amount=order.total_amount,
+                        discount_rate=order.discount_rate,
+                        is_bulk_discount=order.is_bulk_discount,
+                        status=models.InvoiceStatus.UNPAID
+                    )
+                    db.add(invoice)
+                    invoice_count += 1
+                    total_amount += order.total_amount
+                    order_numbers.append(order.order_number)
+                
+                db.commit()
+                
+                # 通知メール送信
+                if invoice_count > 0:
+                    subject = f"【自動通知】本日締め日：{cust.company} 様の請求処理が完了しました"
+                    body = f"""株式会社 熊野森科学研究所 担当者様
+
+本日（{today.strftime('%Y/%m/%d')}）は、{cust.company} 様の締め日です。
+システムにより以下の請求書が自動発行されました。
+
+■ 顧客名：{cust.company}
+■ 発行件数：{invoice_count} 件
+■ 合計請求額：¥{'{:,.0f}'.format(total_amount)} (税込)
+■ 対象受注番号：{', '.join(order_numbers)}
+
+詳細および印刷は受発注管理システムの「入金・請求」メニューよりご確認ください。
+"""
+                    # システム設定から通知先を取得
+                    settings = db.query(models.SystemSetting).all()
+                    s_dict = {s.key: s.value for s in settings}
+                    target_email = s_dict.get("notification_email") or "info@kumanomorikaken.co.jp"
+                    
+                    send_notification(subject, body, to=[target_email])
+                    print(f"Closing notification sent for {cust.company} to {target_email}")
+                    
+    except Exception as e:
+        print(f"Error in closing_notification_job: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+# APScheduler 設定
+scheduler = BackgroundScheduler(timezone="Asia/Tokyo")
+scheduler.add_job(closing_notification_job, 'cron', hour=8, minute=0)
+
+@app.on_event("startup")
+async def startup_event():
+    scheduler.start()
+    print("APScheduler started on startup (Closing Notification Job: 08:00 JST)")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    scheduler.shutdown()
+    print("APScheduler shutdown")
 
 # --- Dashboard ---
 @app.get("/", response_class=HTMLResponse)
@@ -470,6 +574,9 @@ async def create_customer(
     invoice_delivery_method: str = Form("POSTAL"),
     login_id: Optional[str] = Form(None),
     agency_password: Optional[str] = Form(None),
+    closing_day: Optional[int] = Form(None),
+    payment_term_months: int = Form(1),
+    payment_day: Optional[int] = Form(None),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -480,7 +587,10 @@ async def create_customer(
         is_agency=is_agency,
         invoice_delivery_method=invoice_delivery_method,
         login_id=login_id if is_agency and login_id else None,
-        agency_password=agency_password if is_agency and agency_password else None
+        agency_password=agency_password if is_agency and agency_password else None,
+        closing_day=closing_day,
+        payment_term_months=payment_term_months,
+        payment_day=payment_day
     )
     db.add(customer)
     db.commit()
@@ -517,6 +627,9 @@ async def update_customer(
     invoice_delivery_method: str = Form("POSTAL"),
     login_id: Optional[str] = Form(None),
     agency_password: Optional[str] = Form(None),
+    closing_day: Optional[int] = Form(None),
+    payment_term_months: int = Form(1),
+    payment_day: Optional[int] = Form(None),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -534,6 +647,9 @@ async def update_customer(
         customer.invoice_delivery_method = invoice_delivery_method
         customer.login_id = login_id if is_agency and login_id else None
         customer.agency_password = agency_password if is_agency and agency_password else None
+        customer.closing_day = closing_day
+        customer.payment_term_months = payment_term_months
+        customer.payment_day = payment_day
         db.commit()
     return RedirectResponse(url="/customers", status_code=303)
 

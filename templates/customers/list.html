@@ -22,6 +22,8 @@
                     <th>担当者名</th>
                     <th>メールアドレス</th>
                     <th>電話番号</th>
+                    <th>締め日</th>
+                    <th>支払日</th>
                     <th>操作</th>
                 </tr>
             </thead>
@@ -32,6 +34,15 @@
                     <td>{{ customer.name }}</td>
                     <td>{{ customer.email }}</td>
                     <td>{{ customer.phone }}</td>
+                    <td>{{ customer.closing_day if customer.closing_day else '-' }}{{ '日' if customer.closing_day }}</td>
+                    <td>
+                        {% if customer.payment_day %}
+                            {{ '当月' if customer.payment_term_months == 0 else ('翌月' if customer.payment_term_months == 1 else '翌々月') }}
+                            {{ customer.payment_day }}日
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
                     <td>
                         <div style="display: flex; gap: 0.5rem; align-items: center;">
                             <a href="/customers/edit/{{ customer.id }}" class="btn btn-sm btn-warning">編集</a>

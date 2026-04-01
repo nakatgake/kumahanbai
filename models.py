@@ -44,6 +44,9 @@ class Customer(Base):
     login_id = Column(String, unique=True, nullable=True)
     agency_password = Column(String, nullable=True)  # 平文で保存（当社が確認可能）
     invoice_delivery_method = Column(String, default="POSTAL") # "POSTAL" or "EMAIL"
+    closing_day = Column(Integer, nullable=True) # 1-31 (31 is end of month)
+    payment_term_months = Column(Integer, default=1) # 0:Same month, 1:Next month, 2:Month after next
+    payment_day = Column(Integer, nullable=True) # 1-31 (31 is end of month)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     quotations = relationship("Quotation", back_populates="customer", cascade="all, delete-orphan")
