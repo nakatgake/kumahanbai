@@ -42,6 +42,15 @@
         </div>
     </div>
     <div class="main-content">
+        <div style="background: #ffffff; padding: 1rem 2rem; border-bottom: 1px solid #e0e0e0; margin: -2rem -2rem 2rem -2rem; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
+            <div style="font-size: 1.1rem; color: #7f8c8d; font-weight: 500;">
+                代理店ポータル
+            </div>
+            <div style="font-size: 1.25rem; font-weight: bold; color: #2c3e50;">
+                <span style="color: #3498db; margin-right: 0.5rem;">🏢</span>
+                {{ agency.company if agency else 'ゲスト' }} 御中
+            </div>
+        </div>
         {% if message %}
         <div style="padding: 1rem; margin-bottom: 1rem; border-radius: 8px; background: #e1f5fe; color: #0288d1; border: 1px solid #b3e5fc;">
             {{ message }}
