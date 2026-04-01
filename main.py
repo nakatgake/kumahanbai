@@ -132,10 +132,53 @@ def migrate_db():
         print("Migrating notifications: adding related_id column...")
         cursor.execute("ALTER TABLE notifications ADD COLUMN related_id INTEGER")
     
+    # Multi-Warehouse Migration
+    # 1. QuotationItem / AgencyOrderItem location_id
+    for item_table in ['quotation_items', 'agency_order_items']:
+        cursor.execute(f"PRAGMA table_info({item_table})")
+        cols = [row[1] for row in cursor.fetchall()]
+        if 'location_id' not in cols:
+            print(f"Migrating {item_table}: adding location_id...")
+            cursor.execute(f"ALTER TABLE {item_table} ADD COLUMN location_id INTEGER")
+            
     conn.commit()
     conn.close()
 
+# Initialize Multi-Warehouse Data
+def init_warehouse_data():
+    db = SessionLocal()
+    try:
+        # 1. Ensure at least one location exists
+        count = db.query(models.Location).count()
+        if count == 0:
+            print("No locations found. Initializing '本社'...")
+            main_loc = models.Location(name="本社", is_default=True)
+            db.add(main_loc)
+            db.commit()
+            db.refresh(main_loc)
+            
+            # 2. Migrate existing product stock to this location
+            products = db.query(models.Product).all()
+            for product in products:
+                # Check if stock record exists
+                exists = db.query(models.ProductStock).filter_by(product_id=product.id, location_id=main_loc.id).first()
+                if not exists:
+                    print(f"Migrating stock for {product.name} to {main_loc.name}...")
+                    stock = models.ProductStock(
+                        product_id=product.id,
+                        location_id=main_loc.id,
+                        quantity=product.stock_quantity or 0
+                    )
+                    db.add(stock)
+            db.commit()
+    except Exception as e:
+        print(f"Error initializing warehouse data: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 migrate_db()
+init_warehouse_data()
 
 # --- Security Configuration ---
 SECRET_KEY = "kumanogo-secret-key-12345" # 本番環境では環境変数などで管理すべき
@@ -228,6 +271,109 @@ async def dashboard(
         "end_date": end_date,
         "user": user
     })
+
+# --- Locations (Warehouses) ---
+@app.get("/locations", response_class=HTMLResponse)
+async def list_locations(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    locations = db.query(models.Location).order_by(models.Location.is_default.desc(), models.Location.name).all()
+    return templates.TemplateResponse(request=request, name="locations/list.html", context={
+        "request": request,
+        "active_page": "locations",
+        "locations": locations,
+        "user": user
+    })
+
+@app.get("/locations/new", response_class=HTMLResponse)
+async def new_location(
+    request: Request,
+    user: models.User = Depends(get_active_user)
+):
+    return templates.TemplateResponse(request=request, name="locations/form.html", context={
+        "request": request,
+        "active_page": "locations",
+        "location": None,
+        "user": user
+    })
+
+@app.post("/locations/new")
+async def create_location(
+    name: str = Form(...),
+    description: str = Form(""),
+    is_default: bool = Form(False),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    if is_default:
+        # Reset other defaults
+        db.query(models.Location).filter(models.Location.is_default == True).update({"is_default": False})
+
+    new_loc = models.Location(
+        name=name,
+        description=description,
+        is_default=is_default
+    )
+    db.add(new_loc)
+    db.commit()
+    return RedirectResponse(url="/locations", status_code=303)
+
+@app.get("/locations/edit/{location_id}", response_class=HTMLResponse)
+async def edit_location(
+    location_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    location = db.query(models.Location).get(location_id)
+    if not location:
+        return RedirectResponse(url="/locations", status_code=303)
+        
+    return templates.TemplateResponse(request=request, name="locations/form.html", context={
+        "request": request,
+        "active_page": "locations",
+        "location": location,
+        "user": user
+    })
+
+@app.post("/locations/edit/{location_id}")
+async def update_location(
+    location_id: int,
+    name: str = Form(...),
+    description: str = Form(""),
+    is_default: bool = Form(False),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    location = db.query(models.Location).get(location_id)
+    if location:
+        if is_default and not location.is_default:
+            db.query(models.Location).filter(models.Location.is_default == True).update({"is_default": False})
+        
+        location.name = name
+        location.description = description
+        location.is_default = is_default
+        db.commit()
+    return RedirectResponse(url="/locations", status_code=303)
+
+@app.post("/locations/delete/{location_id}")
+async def delete_location(
+    location_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    location = db.query(models.Location).get(location_id)
+    if location and not location.is_default:
+        # Ensure it has no stocks before deleting. For simplicity with cascades, we just delete or check.
+        # It's better to prevent deletion if there is non-zero stock.
+        total_stock = sum(s.quantity for s in location.stocks)
+        if total_stock == 0:
+            db.delete(location)
+            db.commit()
+    return RedirectResponse(url="/locations", status_code=303)
+
 # --- Customers ---
 @app.get("/customers", response_class=HTMLResponse)
 async def list_customers(
@@ -436,10 +582,12 @@ async def list_products(
             (models.Product.name.contains(q)) | (models.Product.code.contains(q))
         )
     products = query.order_by(models.Product.id.desc()).all()
+    locations = db.query(models.Location).order_by(models.Location.is_default.desc(), models.Location.name).all()
     return templates.TemplateResponse(request=request, name="products/list.html", context={
         "request": request,
         "active_page": "products",
         "products": products,
+        "locations": locations,
         "search_query": q,
         "user": user
     })
@@ -489,9 +637,11 @@ async def new_product(
     request: Request,
     user: models.User = Depends(get_active_user)
 ):
+    locations = db.query(models.Location).order_by(models.Location.is_default.desc(), models.Location.name).all()
     return templates.TemplateResponse(request=request, name="products/form.html", context={
         "request": request, 
         "active_page": "products",
+        "locations": locations,
         "user": user
     })
 
@@ -506,6 +656,7 @@ async def create_product(
     price_d: float = Form(0.0),
     price_e: float = Form(0.0),
     stock_quantity: int = Form(0),
+    location_id: int = Form(None),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -518,6 +669,14 @@ async def create_product(
     )
     db.add(product)
     db.commit()
+    db.refresh(product)
+    
+    # Store initial stock to selected location
+    if stock_quantity > 0 and location_id:
+        stock = models.ProductStock(product_id=product.id, location_id=location_id, quantity=stock_quantity)
+        db.add(stock)
+        db.commit()
+        
     return RedirectResponse(url="/products", status_code=303)
 
 @app.get("/products/edit/{product_id}", response_class=HTMLResponse)
@@ -528,10 +687,12 @@ async def edit_product(
     user: models.User = Depends(get_active_user)
 ):
     product = db.query(models.Product).get(product_id)
+    locations = db.query(models.Location).order_by(models.Location.is_default.desc(), models.Location.name).all()
     return templates.TemplateResponse(request=request, name="products/form.html", context={
         "request": request, 
         "active_page": "products", 
         "product": product,
+        "locations": locations,
         "user": user
     })
 
@@ -548,6 +709,7 @@ async def update_product(
     price_e: float = Form(0.0),
     stock_quantity: int = Form(0),
     stock_add: int = Form(0),
+    location_id: int = Form(None),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -562,8 +724,18 @@ async def update_product(
         product.price_c = price_c
         product.price_d = price_d
         product.price_e = price_e
-        # 入庫加算: 現在の在庫に入庫数を加算する
-        product.stock_quantity = product.stock_quantity + stock_add
+        
+        # 入庫加算: 指定拠点に入庫数を加算する
+        if stock_add > 0 and location_id:
+            stock = db.query(models.ProductStock).filter_by(product_id=product.id, location_id=location_id).first()
+            if not stock:
+                stock = models.ProductStock(product_id=product.id, location_id=location_id, quantity=0)
+                db.add(stock)
+            stock.quantity += stock_add
+            # Update total cache
+            product.stock_quantity = sum(s.quantity for s in product.location_stocks) + stock.quantity if not stock.id else sum(s.quantity for s in product.location_stocks)
+            product.stock_quantity += stock_add
+            
         db.commit()
     return RedirectResponse(url="/products", status_code=303)
 
@@ -571,11 +743,23 @@ async def update_product(
 async def add_stock(
     product_id: int,
     quantity: int = Form(...),
+    location_id: int = Form(...),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
     product = db.query(models.Product).get(product_id)
     if product and quantity > 0:
+        # Update specific location stock
+        stock = db.query(models.ProductStock).filter_by(product_id=product.id, location_id=location_id).first()
+        if not stock:
+            stock = models.ProductStock(product_id=product.id, location_id=location_id, quantity=0)
+            db.add(stock)
+        stock.quantity += quantity
+        
+        # Update total cache
+        product.stock_quantity = sum(s.quantity for s in product.location_stocks) + stock.quantity if not stock.id else sum(s.quantity for s in product.location_stocks)
+        # Actually a safer way is just simple addition, but summing ensures consistency.
+        # Since the newly added stock object might not be flushed, let's just do:
         product.stock_quantity += quantity
         db.commit()
     return RedirectResponse(url="/products", status_code=303)
@@ -687,10 +871,12 @@ async def new_quotation(
     user: models.User = Depends(get_active_user)
 ):
     customers = db.query(models.Customer).order_by(models.Customer.id.desc()).all()
+    locations = db.query(models.Location).order_by(models.Location.is_default.desc(), models.Location.name).all()
     return templates.TemplateResponse(request=request, name="quotations/form.html", context={
         "request": request,
         "active_page": "quotations",
         "customers": customers,
+        "locations": locations,
         "user": user
     })
 
@@ -719,6 +905,7 @@ async def create_quotation(
     product_names = form_data.getlist("product_name[]")
     quantities = form_data.getlist("quantity[]")
     prices = form_data.getlist("price[]")
+    location_ids = form_data.getlist("location_id[]")
     
     pay_due = None
     if payment_due_date:
@@ -740,17 +927,22 @@ async def create_quotation(
     db.flush()
 
     total = 0
-    for p_id, p_name, qty, price in zip(product_ids, product_names, quantities, prices):
+    for idx, (p_id, p_name, qty, price) in enumerate(zip(product_ids, product_names, quantities, prices)):
         qty = int(qty)
         price = float(price)
         subtotal = qty * price
         
+        # location_id
+        loc_id = location_ids[idx] if idx < len(location_ids) and location_ids[idx] else None
+        loc_id = int(loc_id) if loc_id else None
+
         # product_id can be empty for manual entry
         pid = int(p_id) if p_id and p_id != "" else None
         
         item = models.QuotationItem(
             quotation_id=quotation.id,
             product_id=pid,
+            location_id=loc_id,
             description=p_name,
             quantity=qty,
             unit_price=price,
@@ -776,11 +968,13 @@ async def edit_quotation(
 ):
     quotation = db.query(models.Quotation).get(quote_id)
     customers = db.query(models.Customer).order_by(models.Customer.id.desc()).all()
+    locations = db.query(models.Location).order_by(models.Location.is_default.desc(), models.Location.name).all()
     return templates.TemplateResponse(request=request, name="quotations/form.html", context={
         "request": request,
         "active_page": "quotations",
         "quotation": quotation,
         "customers": customers,
+        "locations": locations,
         "user": user
     })
 
@@ -829,6 +1023,10 @@ async def update_quotation(
                 product = db.query(models.Product).get(old_item.product_id)
                 if product:
                     product.stock_quantity += old_item.quantity
+                    if old_item.location_id:
+                        p_stock = db.query(models.ProductStock).filter_by(product_id=product.id, location_id=old_item.location_id).first()
+                        if p_stock:
+                            p_stock.quantity += old_item.quantity
 
     # 洗替方式で明細を更新
     db.query(models.QuotationItem).filter(models.QuotationItem.quotation_id == quote_id).delete()
@@ -838,17 +1036,23 @@ async def update_quotation(
     product_names = form_data.getlist("product_name[]")
     quantities = form_data.getlist("quantity[]")
     prices = form_data.getlist("price[]")
+    location_ids = form_data.getlist("location_id[]")
 
     total = 0
-    for p_id, p_name, qty, price in zip(product_ids, product_names, quantities, prices):
+    for idx, (p_id, p_name, qty, price) in enumerate(zip(product_ids, product_names, quantities, prices)):
         qty = int(qty)
         price = float(price)
         subtotal = qty * price
+        
+        loc_id = location_ids[idx] if idx < len(location_ids) and location_ids[idx] else None
+        loc_id = int(loc_id) if loc_id else None
+
         pid = int(p_id) if p_id and p_id != "" else None
         
         item = models.QuotationItem(
             quotation_id=quotation.id,
             product_id=pid,
+            location_id=loc_id,
             description=p_name,
             quantity=qty,
             unit_price=price,
@@ -861,6 +1065,12 @@ async def update_quotation(
             product = db.query(models.Product).get(pid)
             if product:
                 product.stock_quantity -= qty
+                if loc_id:
+                    p_stock = db.query(models.ProductStock).filter_by(product_id=product.id, location_id=loc_id).first()
+                    if not p_stock:
+                        p_stock = models.ProductStock(product_id=product.id, location_id=loc_id, quantity=0)
+                        db.add(p_stock)
+                    p_stock.quantity -= qty
     
     final_total_tax_excl = int(total * (1 - (discount_rate / 100)))
     if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
@@ -1142,11 +1352,18 @@ async def convert_to_order(
     # 2. Update Quotation Status
     quote.status = models.QuoteStatus.ORDERED
 
-    # 3. Deduct Stock from Products
+    # 3. Deduct Stock from Products using specific locations
     for item in quote.items:
-        product = db.query(models.Product).get(item.product_id)
-        if product:
-            product.stock_quantity -= item.quantity
+        if item.product_id:
+            product = db.query(models.Product).get(item.product_id)
+            if product:
+                product.stock_quantity -= item.quantity
+                if item.location_id:
+                    p_stock = db.query(models.ProductStock).filter_by(product_id=product.id, location_id=item.location_id).first()
+                    if not p_stock:
+                        p_stock = models.ProductStock(product_id=product.id, location_id=item.location_id, quantity=0)
+                        db.add(p_stock)
+                    p_stock.quantity -= item.quantity
     
     db.commit()
     return RedirectResponse(url="/quotations", status_code=303)
@@ -1158,12 +1375,14 @@ async def new_order_form(
     user: models.User = Depends(get_active_user)
 ):
     customers = db.query(models.Customer).order_by(models.Customer.id.desc()).all()
+    locations = db.query(models.Location).order_by(models.Location.is_default.desc(), models.Location.name).all()
     # Generate a default order number
     order_number = f"ORD-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
     return templates.TemplateResponse(request=request, name="orders/form.html", context={
         "request": request,
         "active_page": "orders",
         "customers": customers,
+        "locations": locations,
         "order_number": order_number,
         "user": user
     })
@@ -1189,6 +1408,7 @@ async def create_direct_order(
     product_names = form_data.getlist("product_name[]")
     quantities = form_data.getlist("quantity[]")
     prices = form_data.getlist("price[]")
+    location_ids = form_data.getlist("location_id[]")
 
     # Create a shadow quotation for this order
     quotation = models.Quotation(
@@ -1205,15 +1425,20 @@ async def create_direct_order(
     db.flush()
 
     total = 0
-    for p_id, p_name, qty, price in zip(product_ids, product_names, quantities, prices):
+    for idx, (p_id, p_name, qty, price) in enumerate(zip(product_ids, product_names, quantities, prices)):
         qty = int(qty)
         price = float(price)
         subtotal = qty * price
+        
+        loc_id = location_ids[idx] if idx < len(location_ids) and location_ids[idx] else None
+        loc_id = int(loc_id) if loc_id else None
+
         pid = int(p_id) if p_id and p_id != "" else None
         
         item = models.QuotationItem(
             quotation_id=quotation.id,
             product_id=pid,
+            location_id=loc_id,
             description=p_name,
             quantity=qty,
             unit_price=price,
@@ -1227,6 +1452,12 @@ async def create_direct_order(
             product = db.query(models.Product).get(pid)
             if product:
                 product.stock_quantity -= qty
+                if loc_id:
+                    p_stock = db.query(models.ProductStock).filter_by(product_id=product.id, location_id=loc_id).first()
+                    if not p_stock:
+                        p_stock = models.ProductStock(product_id=product.id, location_id=loc_id, quantity=0)
+                        db.add(p_stock)
+                    p_stock.quantity -= qty
     
     final_total_tax_excl = int(total * (1 - (discount_rate / 100)))
     if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
@@ -1257,11 +1488,13 @@ async def edit_order(
 ):
     order = db.query(models.Order).get(order_id)
     customers = db.query(models.Customer).order_by(models.Customer.id.desc()).all()
+    locations = db.query(models.Location).order_by(models.Location.is_default.desc(), models.Location.name).all()
     return templates.TemplateResponse(request=request, name="orders/form.html", context={
         "request": request,
         "active_page": "orders",
         "order": order,
         "customers": customers,
+        "locations": locations,
         "user": user
     })
 
@@ -1299,6 +1532,10 @@ async def update_order(
             product = db.query(models.Product).get(old_item.product_id)
             if product:
                 product.stock_quantity += old_item.quantity
+                if old_item.location_id:
+                    p_stock = db.query(models.ProductStock).filter_by(product_id=product.id, location_id=old_item.location_id).first()
+                    if p_stock:
+                        p_stock.quantity += old_item.quantity
 
     # 洗替方式で明細を更新
     db.query(models.QuotationItem).filter(models.QuotationItem.quotation_id == quotation.id).delete()
@@ -1308,17 +1545,23 @@ async def update_order(
     product_names = form_data.getlist("product_name[]")
     quantities = form_data.getlist("quantity[]")
     prices = form_data.getlist("price[]")
+    location_ids = form_data.getlist("location_id[]")
 
     total = 0
-    for p_id, p_name, qty, price in zip(product_ids, product_names, quantities, prices):
+    for idx, (p_id, p_name, qty, price) in enumerate(zip(product_ids, product_names, quantities, prices)):
         qty = int(qty)
         price = float(price)
         subtotal = qty * price
+        
+        loc_id = location_ids[idx] if idx < len(location_ids) and location_ids[idx] else None
+        loc_id = int(loc_id) if loc_id else None
+
         pid = int(p_id) if p_id and p_id != "" else None
         
         item = models.QuotationItem(
             quotation_id=quotation.id,
             product_id=pid,
+            location_id=loc_id,
             description=p_name,
             quantity=qty,
             unit_price=price,
@@ -1331,6 +1574,12 @@ async def update_order(
             product = db.query(models.Product).get(pid)
             if product:
                 product.stock_quantity -= qty
+                if loc_id:
+                    p_stock = db.query(models.ProductStock).filter_by(product_id=product.id, location_id=loc_id).first()
+                    if not p_stock:
+                        p_stock = models.ProductStock(product_id=product.id, location_id=loc_id, quantity=0)
+                        db.add(p_stock)
+                    p_stock.quantity -= qty
     
     final_total_tax_excl = int(total * (1 - (discount_rate / 100)))
     if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
@@ -2551,11 +2800,13 @@ async def admin_agency_orders(
             (models.Customer.company.contains(q))
         )
     orders = query.order_by(models.AgencyOrder.id.desc()).all()
+    locations = db.query(models.Location).order_by(models.Location.is_default.desc(), models.Location.name).all()
     
     return templates.TemplateResponse(request=request, name="agency_orders_admin.html", context={
         "request": request,
         "active_page": "agency_orders",
         "orders": orders,
+        "locations": locations,
         "search_query": q,
         "user": user
     })
@@ -2598,6 +2849,7 @@ async def delete_agency_order(
 @app.post("/admin/agency-orders/{order_id}/convert")
 async def convert_agency_order_to_main(
     order_id: int,
+    location_id: int = Form(...),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
@@ -2623,6 +2875,7 @@ async def convert_agency_order_to_main(
         qi = models.QuotationItem(
             quotation_id=new_quote.id,
             product_id=item.product_id,
+            location_id=location_id,
             description=item.product_name,
             quantity=item.quantity,
             unit_price=item.unit_price,
@@ -2634,6 +2887,12 @@ async def convert_agency_order_to_main(
             product = db.query(models.Product).get(item.product_id)
             if product:
                 product.stock_quantity -= item.quantity
+                
+                p_stock = db.query(models.ProductStock).filter_by(product_id=product.id, location_id=location_id).first()
+                if not p_stock:
+                    p_stock = models.ProductStock(product_id=product.id, location_id=location_id, quantity=0)
+                    db.add(p_stock)
+                p_stock.quantity -= item.quantity
     
     # 3. Create Order
     new_order = models.Order(

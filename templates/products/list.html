@@ -41,9 +41,14 @@
                     <td>
                         <div style="display: flex; gap: 0.5rem; justify-content: center;">
                             <a href="/products/edit/{{ product.id }}" class="btn btn-sm btn-warning">編集</a>
-                            <form id="stockForm-{{ product.id }}" action="/products/{{ product.id }}/add_stock" method="post" style="margin: 0;">
-                                <input type="hidden" name="quantity" id="stockQty-{{ product.id }}">
-                                <button type="button" class="btn btn-sm" style="background: #27ae60; color: white; border: none;" onclick="addStock({{ product.id }})">📦 入庫</button>
+                            <form action="/products/{{ product.id }}/add_stock" method="post" style="margin: 0; display: flex; gap: 0.3rem;">
+                                <select name="location_id" required style="padding: 0.2rem; border: 1px solid #ccc; border-radius: 4px; max-width: 100px;">
+                                    {% for loc in locations %}
+                                    <option value="{{ loc.id }}">{{ loc.name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <input type="number" name="quantity" placeholder="個数" required min="1" style="width: 50px; padding: 0.2rem; border: 1px solid #ccc; border-radius: 4px;">
+                                <button type="submit" class="btn btn-sm" style="background: #27ae60; color: white; border: none; padding: 0.2rem 0.5rem;">📦 入庫</button>
                             </form>
                         </div>
                     </td>
@@ -58,18 +63,4 @@
     </div>
 </div>
 
-<script>
-function addStock(productId) {
-    const qty = prompt("入庫する数量（追加分）を入力してください:");
-    if (qty !== null && qty.trim() !== '') {
-        const parsedQty = parseInt(qty.trim(), 10);
-        if (!isNaN(parsedQty) && parsedQty > 0) {
-            document.getElementById('stockQty-' + productId).value = parsedQty;
-            document.getElementById('stockForm-' + productId).submit();
-        } else {
-            alert("正しい数値を入力してください。");
-        }
-    }
-}
-</script>
 {% endblock %}
