@@ -33,9 +33,17 @@
                     <td><strong>{{ product.name }}</strong></td>
                     <td>¥{{ "{:,.0f}".format(product.price_retail) }}</td>
                     <td>
-                        <span class="badge {{ 'badge-unpaid' if product.stock_quantity < 5 else 'badge-paid' }}">
+                        <span class="badge {{ 'badge-unpaid' if product.stock_quantity < 5 else 'badge-paid' }}" 
+                              title="{% for s in product.location_stocks %}{{ s.location.name }}: {{ s.stock_quantity }}{{ '\n' if not loop.last else '' }}{% endfor %}">
                             {{ product.stock_quantity }}
                         </span>
+                        <div style="font-size: 0.75rem; color: #666; margin-top: 2px;">
+                            {% for s in product.location_stocks %}
+                                {%- if s.stock_quantity != 0 -%}
+                                <div>{{ s.location.name }}: {{ s.stock_quantity }}</div>
+                                {%- endif -%}
+                            {% endfor %}
+                        </div>
                     </td>
                     <td>{{ product.created_at.strftime('%Y/%m/%d') }}</td>
                     <td>

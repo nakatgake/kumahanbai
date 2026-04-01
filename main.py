@@ -43,6 +43,57 @@ from utils.email import send_notification
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
 
+def update_product_stock(db: Session, product_id: int, location_id: int, quantity: int, move_type: str, reason: str = None, from_location_id: int = None):
+    """
+    複数拠点の在庫を更新し、履歴を記録する一括関数
+    move_type: "INBOUND", "OUTBOUND", "TRANSFER", "ADJUSTMENT"
+    """
+    product = db.query(models.Product).get(product_id)
+    if not product:
+        return
+
+    if move_type == "TRANSFER":
+        # 移動元からマイナス
+        from_stock = db.query(models.ProductLocationStock).filter_by(product_id=product_id, location_id=from_location_id).first()
+        if not from_stock:
+            from_stock = models.ProductLocationStock(product_id=product_id, location_id=from_location_id, stock_quantity=0)
+            db.add(from_stock)
+        from_stock.stock_quantity -= quantity
+        
+        # 移動先へプラス
+        to_stock = db.query(models.ProductLocationStock).filter_by(product_id=product_id, location_id=location_id).first()
+        if not to_stock:
+            to_stock = models.ProductLocationStock(product_id=product_id, location_id=location_id, stock_quantity=0)
+            db.add(to_stock)
+        to_stock.stock_quantity += quantity
+        
+        # 履歴記録
+        movement = models.StockMovement(
+            product_id=product_id, from_location_id=from_location_id, to_location_id=location_id,
+            quantity=quantity, type=move_type, reason=reason
+        )
+        db.add(movement)
+    
+    else:
+        # 入庫（INBOUND）または出庫（OUTBOUND）
+        stock = db.query(models.ProductLocationStock).filter_by(product_id=product_id, location_id=location_id).first()
+        if not stock:
+            stock = models.ProductLocationStock(product_id=product_id, location_id=location_id, stock_quantity=0)
+            db.add(stock)
+            
+        if move_type == "INBOUND":
+            stock.stock_quantity += quantity
+            movement = models.StockMovement(product_id=product_id, to_location_id=location_id, quantity=quantity, type=move_type, reason=reason)
+        else: # OUTBOUND
+            stock.stock_quantity -= quantity
+            movement = models.StockMovement(product_id=product_id, from_location_id=location_id, quantity=quantity, type=move_type, reason=reason)
+        db.add(movement)
+    
+    db.flush() # IDを確定させる
+    # 全拠点の合計在庫を Product.stock_quantity にキャッシュ
+    all_stocks = db.query(models.ProductLocationStock).filter_by(product_id=product_id).all()
+    product.stock_quantity = sum(s.stock_quantity for s in all_stocks)
+
 # Database Migration for Customer Rank and Product Price Tiers
 def migrate_db():
     import sqlite3
@@ -664,12 +715,19 @@ async def create_product(
 ):
     product = models.Product(
         code=code, name=name, 
-        unit_price=price_retail, # Keep for compatibility
+        unit_price=price_retail, 
         price_retail=price_retail,
         price_a=price_a, price_b=price_b, price_c=price_c, price_d=price_d, price_e=price_e,
-        stock_quantity=stock_quantity
+        stock_quantity=0 # 初期値は0（後で拠点に割り振る）
     )
     db.add(product)
+    db.flush() # IDを取得
+    
+    # デフォルト拠点（本社倉庫）に初期在庫を入れる
+    main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+    if main_loc and stock_quantity > 0:
+        update_product_stock(db, product.id, main_loc.id, stock_quantity, "INBOUND", "新規登録による初期在庫")
+    
     db.commit()
     return RedirectResponse(url="/products", status_code=303)
 
@@ -715,8 +773,13 @@ async def update_product(
         product.price_c = price_c
         product.price_d = price_d
         product.price_e = price_e
-        # 入庫加算: 現在の在庫に入庫数を加算する
-        product.stock_quantity = product.stock_quantity + stock_add
+        
+        # 入庫加算を拠点管理システム経由で行う
+        if stock_add > 0:
+            main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+            if main_loc:
+                update_product_stock(db, product.id, main_loc.id, stock_add, "INBOUND", "商品編集画面からの在庫追加")
+        
         db.commit()
     return RedirectResponse(url="/products", status_code=303)
 
@@ -979,9 +1042,9 @@ async def update_quotation(
     if quotation.status == models.QuoteStatus.ORDERED:
         for old_item in db.query(models.QuotationItem).filter(models.QuotationItem.quotation_id == quotation.id).all():
             if old_item.product_id:
-                product = db.query(models.Product).get(old_item.product_id)
-                if product:
-                    product.stock_quantity += old_item.quantity
+                main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+                if main_loc:
+                    update_product_stock(db, old_item.product_id, main_loc.id, -old_item.quantity, "INBOUND", "注文キャンセルによる在庫戻し")
 
     # 洗替方式で明細を更新
     db.query(models.QuotationItem).filter(models.QuotationItem.quotation_id == quote_id).delete()
@@ -1011,9 +1074,9 @@ async def update_quotation(
         total += subtotal
         
         if quotation.status == models.QuoteStatus.ORDERED and pid:
-            product = db.query(models.Product).get(pid)
-            if product:
-                product.stock_quantity -= qty
+            main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+            if main_loc:
+                update_product_stock(db, pid, main_loc.id, qty, "OUTBOUND", "注文更新による自動出庫")
     
     final_total_tax_excl = int(total * (1 - (discount_rate / 100)))
     if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
@@ -1035,9 +1098,9 @@ async def delete_quotation(
             if quote.status == models.QuoteStatus.ORDERED:
                 for item in quote.items:
                     if item.product_id:
-                        product = db.query(models.Product).get(item.product_id)
-                        if product:
-                            product.stock_quantity += item.quantity
+                        main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+                        if main_loc:
+                            update_product_stock(db, item.product_id, main_loc.id, -item.quantity, "INBOUND", "見積削除による在庫戻し")
             db.delete(quote)
             db.commit()
     except Exception as e:
@@ -1053,9 +1116,9 @@ async def cancel_quotation(id: int, db: Session = Depends(get_db), user: models.
         if quote.order:
             for item in quote.items:
                 if item.product_id:
-                    product = db.query(models.Product).get(item.product_id)
-                    if product:
-                        product.stock_quantity += item.quantity
+                    main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+                    if main_loc:
+                        update_product_stock(db, item.product_id, main_loc.id, -item.quantity, "INBOUND", "注文キャンセルによる在庫戻し")
             db.delete(quote.order)
         quote.status = models.QuoteStatus.DRAFT
         db.commit()
@@ -1297,9 +1360,10 @@ async def convert_to_order(
 
     # 3. Deduct Stock from Products
     for item in quote.items:
-        product = db.query(models.Product).get(item.product_id)
-        if product:
-            product.stock_quantity -= item.quantity
+        if item.product_id:
+            main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+            if main_loc:
+                update_product_stock(db, item.product_id, main_loc.id, item.quantity, "OUTBOUND", "受注確定による自動出庫")
     
     db.commit()
     return RedirectResponse(url="/quotations", status_code=303)
@@ -1377,9 +1441,9 @@ async def create_direct_order(
         
         # Inventory deduction
         if pid:
-            product = db.query(models.Product).get(pid)
-            if product:
-                product.stock_quantity -= qty
+            main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+            if main_loc:
+                update_product_stock(db, pid, main_loc.id, qty, "OUTBOUND", "直接受注による自動出庫")
     
     final_total_tax_excl = int(total * (1 - (discount_rate / 100)))
     if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
@@ -1449,9 +1513,9 @@ async def update_order(
     
     for old_item in db.query(models.QuotationItem).filter(models.QuotationItem.quotation_id == quotation.id).all():
         if old_item.product_id:
-            product = db.query(models.Product).get(old_item.product_id)
-            if product:
-                product.stock_quantity += old_item.quantity
+            main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+            if main_loc:
+                update_product_stock(db, old_item.product_id, main_loc.id, -old_item.quantity, "INBOUND", "注文編集による在庫戻し")
 
     # 洗替方式で明細を更新
     db.query(models.QuotationItem).filter(models.QuotationItem.quotation_id == quotation.id).delete()
@@ -1481,9 +1545,9 @@ async def update_order(
         total += subtotal
         
         if pid:
-            product = db.query(models.Product).get(pid)
-            if product:
-                product.stock_quantity -= qty
+            main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+            if main_loc:
+                update_product_stock(db, pid, main_loc.id, qty, "OUTBOUND", "注文編集による自動出庫")
     
     final_total_tax_excl = int(total * (1 - (discount_rate / 100)))
     if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
@@ -1537,9 +1601,9 @@ async def delete_order(
             if order.quotation:
                 for item in order.quotation.items:
                     if item.product_id:
-                        product = db.query(models.Product).get(item.product_id)
-                        if product:
-                            product.stock_quantity += item.quantity
+                        main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+                        if main_loc:
+                            update_product_stock(db, item.product_id, main_loc.id, -item.quantity, "INBOUND", "受注削除による在庫戻し")
             db.delete(order)
             db.commit()
     except Exception as e:
@@ -1584,6 +1648,11 @@ async def copy_order(id: int, db: Session = Depends(get_db), user: models.User =
             subtotal=item.subtotal
         )
         db.add(new_item)
+        # 在庫減算
+        if item.product_id:
+            main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+            if main_loc:
+                update_product_stock(db, item.product_id, main_loc.id, item.quantity, "OUTBOUND", "コピー受注による自動出庫")
     
     # Create new order linked to this new quote
     new_order = models.Order(
@@ -1873,9 +1942,9 @@ async def delete_invoice(invoice_id: int, db: Session = Depends(get_db), user: m
         if order and order.quotation:
             for item in order.quotation.items:
                 if item.product_id:
-                    product = db.query(models.Product).get(item.product_id)
-                    if product:
-                        product.stock_quantity += item.quantity
+                    main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+                    if main_loc:
+                        update_product_stock(db, item.product_id, main_loc.id, -item.quantity, "INBOUND", "請求書削除による在庫戻し")
         # 紐づく受注も削除（受注がなくなれば請求も不要）
         if order:
             db.delete(order)
@@ -2816,9 +2885,9 @@ async def convert_agency_order_to_main(
         db.add(qi)
         # 在庫を減算
         if item.product_id:
-            product = db.query(models.Product).get(item.product_id)
-            if product:
-                product.stock_quantity -= item.quantity
+            main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+            if main_loc:
+                update_product_stock(db, item.product_id, main_loc.id, item.quantity, "OUTBOUND", f"代理店注文(ORD-{agency_order.order_number})出荷による自動出庫")
     
     # 3. Create Order
     new_order = models.Order(
@@ -3442,6 +3511,53 @@ async def test_smtp_connection(
         if sys.stderr == debug_stream:
             sys.stderr = old_stderr
 
+
+# --- Location & Stock Movement (拠点・在庫移動管理) ---
+@app.get("/admin/locations", response_class=HTMLResponse)
+async def list_locations(request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    if not user.is_admin:
+        return RedirectResponse(url="/", status_code=303)
+    locations = db.query(models.Location).all()
+    return templates.TemplateResponse(request=request, name="admin/locations.html", context={
+        "request": request, "active_page": "admin", "locations": locations, "user": user
+    })
+
+@app.post("/admin/locations/new")
+async def create_location(name: str = Form(...), db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    if not user.is_admin:
+        return RedirectResponse(url="/", status_code=303)
+    loc = models.Location(name=name)
+    db.add(loc)
+    db.commit()
+    return RedirectResponse(url="/admin/locations", status_code=303)
+
+@app.get("/inventory/move", response_class=HTMLResponse)
+async def move_inventory_form(request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    products = db.query(models.Product).all()
+    locations = db.query(models.Location).filter_by(is_active=True).all()
+    return templates.TemplateResponse(request=request, name="inventory/move.html", context={
+        "request": request, "active_page": "inventory", "products": products, "locations": locations, "user": user
+    })
+
+@app.post("/inventory/move")
+async def process_inventory_move(
+    product_id: int = Form(...),
+    from_location_id: int = Form(...),
+    to_location_id: int = Form(...),
+    quantity: int = Form(...),
+    reason: str = Form(None),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    if from_location_id == to_location_id:
+        return HTMLResponse(content="<script>alert('移動元と移動先が同じです。'); history.back();</script>", status_code=400)
+    
+    update_product_stock(
+        db, product_id, to_location_id, quantity, "TRANSFER", 
+        reason=reason or "管理者による手動移動", from_location_id=from_location_id
+    )
+    db.commit()
+    return RedirectResponse(url="/products", status_code=303)
 
 if __name__ == "__main__":
     import uvicorn

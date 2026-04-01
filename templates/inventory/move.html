@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="fas fa-exchange-alt"></i> 在庫移動（拠点間振替）</h4>
+                </div>
+                <div class="card-body">
+                    <form action="/inventory/move" method="POST">
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">対象商品</label>
+                            <select name="product_id" class="form-select select2" required>
+                                <option value="">商品を選択してください...</option>
+                                {% for p in products %}
+                                <option value="{{ p.id }}">{{ p.code }} : {{ p.name }} (総在庫: {{ p.stock_quantity }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="row mb-4">
+                            <div class="col-md-5">
+                                <label class="form-label fw-bold text-danger"><i class="fas fa-sign-out-alt"></i> 移動元（出庫）</label>
+                                <select name="from_location_id" class="form-select" required>
+                                    <option value="">拠点を選択...</option>
+                                    {% for loc in locations %}
+                                    <option value="{{ loc.id }}">{{ loc.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-2 d-flex align-items-center justify-content-center pt-4">
+                                <i class="fas fa-arrow-right fa-2x text-muted"></i>
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label fw-bold text-success"><i class="fas fa-sign-in-alt"></i> 移動先（入庫）</label>
+                                <select name="to_location_id" class="form-select" required>
+                                    <option value="">拠点を選択...</option>
+                                    {% for loc in locations %}
+                                    <option value="{{ loc.id }}">{{ loc.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">移動数量</label>
+                            <input type="number" name="quantity" class="form-control" min="1" placeholder="動かす個数を入力" required>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">移動理由（メモ）</label>
+                            <input type="text" name="reason" class="form-control" placeholder="例：展示品として移動、在庫調整など">
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="fas fa-check"></i> 在庫移動を確定する
+                            </button>
+                            <a href="/products" class="btn btn-outline-secondary">商品一覧に戻る</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

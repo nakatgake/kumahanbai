@@ -17,6 +17,8 @@
             <li><a href="/" class="{{ 'active' if active_page == 'dashboard' else '' }}">ダッシュボード</a></li>
             <li><a href="/customers" class="{{ 'active' if active_page == 'customers' else '' }}">顧客管理</a></li>
             <li><a href="/products" class="{{ 'active' if active_page == 'products' else '' }}">商品台帳・在庫</a></li>
+            <li><a href="/inventory/move" class="{{ 'active' if active_page == 'inventory' else '' }}">🚚 在庫移動（拠点間）</a></li>
+            <li><a href="/admin/locations" class="{{ 'active' if active_page == 'admin' else '' }}">🏢 拠点（保管先）管理</a></li>
             <li><a href="/quotations" class="{{ 'active' if active_page == 'quotations' else '' }}">見積管理</a></li>
             <li><a href="/orders" class="{{ 'active' if active_page == 'orders' else '' }}">受注管理</a></li>
             <li><a href="/invoices" class="{{ 'active' if active_page == 'invoices' else '' }}">入金・請求書発行</a></li>

@@ -67,6 +67,8 @@ class Product(Base):
     stock_quantity = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
+    location_stocks = relationship("ProductLocationStock", back_populates="product", cascade="all, delete-orphan")
+
 class Quotation(Base):
     __tablename__ = "quotations"
     id = Column(Integer, primary_key=True, index=True)
@@ -186,3 +188,43 @@ class SystemSetting(Base):
     id = Column(Integer, primary_key=True, index=True)
     key = Column(String, unique=True, index=True)
     value = Column(String)
+
+class Location(Base):
+    """拠点（保管先）"""
+    __tablename__ = "locations"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True, unique=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    stock_levels = relationship("ProductLocationStock", back_populates="location")
+
+class ProductLocationStock(Base):
+    """商品ごとの拠点別在庫"""
+    __tablename__ = "product_location_stocks"
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"))
+    location_id = Column(Integer, ForeignKey("locations.id", ondelete="CASCADE"))
+    stock_quantity = Column(Integer, default=0)
+
+    product = relationship("Product", back_populates="location_stocks")
+    location = relationship("Location", back_populates="stock_levels")
+
+class StockMovement(Base):
+    """在庫移動履歴"""
+    __tablename__ = "stock_movements"
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"))
+    from_location_id = Column(Integer, ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
+    to_location_id = Column(Integer, ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
+    quantity = Column(Integer)
+    type = Column(String) # "INBOUND", "OUTBOUND", "TRANSFER", "ADJUSTMENT"
+    reason = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    product = relationship("Product")
+    from_location = relationship("Location", foreign_keys=[from_location_id])
+    to_location = relationship("Location", foreign_keys=[to_location_id])
+
+# 既存の Product と関係性を紐づけるために Product クラスを更新（Relationshipを追加）
+# (注: Productクラスの定義位置に戻り、relationshipを追加する必要があります)
