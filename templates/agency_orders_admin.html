@@ -61,12 +61,7 @@
                         </form>
                         
                         {% if order.status == '未処理' %}
-                        <form action="/admin/agency-orders/{{ order.id }}/convert" method="post" onsubmit="return confirm('選択した拠点で受注管理に登録しますか？');" style="display: flex; gap: 0.3rem;">
-                            <select name="location_id" style="padding: 0.3rem; border: 1px solid #27ae60; border-radius: 4px;" required>
-                                {% for loc in locations %}
-                                <option value="{{ loc.id }}">{{ loc.name }}</option>
-                                {% endfor %}
-                            </select>
+                        <form action="/admin/agency-orders/{{ order.id }}/convert" method="post" onsubmit="return confirm('この発注を受注管理に登録しますか？');">
                             <button type="submit" class="btn btn-sm btn-success" style="background: #27ae60;">受注管理に登録</button>
                         </form>
                         {% endif %}

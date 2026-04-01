@@ -64,30 +64,8 @@ class Product(Base):
     price_c = Column(Float, default=0.0)
     price_d = Column(Float, default=0.0)
     price_e = Column(Float, default=0.0)
-    stock_quantity = Column(Integer, default=0) # 全拠点合計数 (キャッシュ)
+    stock_quantity = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
-
-    location_stocks = relationship("ProductStock", back_populates="product", cascade="all, delete-orphan")
-
-class Location(Base):
-    __tablename__ = "locations"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    description = Column(String, nullable=True)
-    is_default = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-
-    stocks = relationship("ProductStock", back_populates="location", cascade="all, delete-orphan")
-
-class ProductStock(Base):
-    __tablename__ = "product_stocks"
-    id = Column(Integer, primary_key=True, index=True)
-    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"))
-    location_id = Column(Integer, ForeignKey("locations.id", ondelete="CASCADE"))
-    quantity = Column(Integer, default=0)
-
-    product = relationship("Product", back_populates="location_stocks")
-    location = relationship("Location", back_populates="stocks")
 
 class Quotation(Base):
     __tablename__ = "quotations"
@@ -113,7 +91,6 @@ class QuotationItem(Base):
     id = Column(Integer, primary_key=True, index=True)
     quotation_id = Column(Integer, ForeignKey("quotations.id", ondelete="CASCADE"))
     product_id = Column(Integer, ForeignKey("products.id", ondelete="SET NULL"))
-    location_id = Column(Integer, ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
     description = Column(String)
     quantity = Column(Integer)
     unit_price = Column(Float)
@@ -121,7 +98,6 @@ class QuotationItem(Base):
 
     quotation = relationship("Quotation", back_populates="items")
     product = relationship("Product")
-    location = relationship("Location")
 
 class Order(Base):
     __tablename__ = "orders"
@@ -173,7 +149,6 @@ class AgencyOrderItem(Base):
     id = Column(Integer, primary_key=True, index=True)
     agency_order_id = Column(Integer, ForeignKey("agency_orders.id", ondelete="CASCADE"))
     product_id = Column(Integer, ForeignKey("products.id", ondelete="SET NULL"), nullable=True)
-    location_id = Column(Integer, ForeignKey("locations.id", ondelete="SET NULL"), nullable=True)
     product_name = Column(String)
     quantity = Column(Integer)
     unit_price = Column(Float)
@@ -181,7 +156,6 @@ class AgencyOrderItem(Base):
 
     agency_order = relationship("AgencyOrder", back_populates="items")
     product = relationship("Product")
-    location = relationship("Location")
 
 class Notification(Base):
     """通知"""

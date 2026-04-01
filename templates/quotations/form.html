@@ -83,9 +83,8 @@
                 <thead>
                     <tr>
                         <th>品名</th>
-                        <th style="width: 150px;">出荷元拠点</th>
-                        <th style="width: 250px;">単価</th>
-                        <th style="width: 150px;">数量</th>
+                        <th style="width: 300px;">単価</th>
+                        <th style="width: 200px;">数量</th>
                         <th style="width: 200px;">小計</th>
                         <th style="width: 70px;"></th>
                     </tr>
@@ -102,14 +101,6 @@
                                 {% else %}
                                     <input type="text" name="product_name[]" value="{{ item.description }}" required style="width: 100%;">
                                 {% endif %}
-                            </td>
-                            <td>
-                                <select name="location_id[]" style="width: 100%; padding: 0.3rem; border: 1px solid #ccc; border-radius: 4px;">
-                                    <option value="">未定</option>
-                                    {% for loc in locations %}
-                                    <option value="{{ loc.id }}" {{ 'selected' if item.location_id == loc.id else '' }}>{{ loc.name }}</option>
-                                    {% endfor %}
-                                </select>
                             </td>
                             <td>
                                 <input type="number" name="price[]" value="{{ item.unit_price }}" step="0.01" onchange="updateRowSubtotal('row-{{ loop.index0 }}')" required
@@ -349,14 +340,6 @@
                 <input type="hidden" name="product_id[]" value="${id}">
                 <input type="hidden" name="product_name[]" value="${name}">
                 ${name}
-            </td>
-            <td>
-                <select name="location_id[]" style="width: 100%; padding: 0.3rem; border: 1px solid #ccc; border-radius: 4px;">
-                    <option value="">未定</option>
-                    {% for loc in locations %}
-                    <option value="{{ loc.id }}" {{ 'selected' if loc.is_default else '' }}>{{ loc.name }}</option>
-                    {% endfor %}
-                </select>
             </td>
             <td><input type="number" name="price[]" value="${price}" step="0.01" onchange="updateRowSubtotal('${rowId}')" required data-prices='${JSON.stringify(prices)}'></td>
             <td><input type="number" name="quantity[]" value="1" onchange="updateRowSubtotal('${rowId}')" required></td>

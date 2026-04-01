@@ -43,53 +43,24 @@
             </div>
         </div>
         {% if product %}
-        <div style="margin-top: 1rem; margin-bottom: 0.5rem; font-weight: bold; padding-bottom: 0.5rem; border-bottom: 1px solid #eee;">拠点別在庫状況</div>
-        <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
-            {% for stock in product.location_stocks %}
-            <div style="background: #f8f9fa; padding: 0.5rem 1rem; border-radius: 4px; border: 1px solid #ddd;">
-                <span style="color: #666; font-size: 0.9rem;">{{ stock.location.name }}:</span>
-                <strong style="font-size: 1.1rem; color: #2c3e50;">{{ stock.quantity }}</strong>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: end;">
+            <div class="form-group">
+                <label>現在の在庫数</label>
+                <input type="number" value="{{ product.stock_quantity }}" readonly
+                    style="background: #f0f0f0; font-weight: bold; font-size: 1.1rem; color: #2c3e50;">
+                <input type="hidden" name="stock_quantity" value="{{ product.stock_quantity }}">
             </div>
-            {% else %}
-            <div style="color: #999;">拠点在庫データなし</div>
-            {% endfor %}
-            <div style="background: #eaf2f8; padding: 0.5rem 1rem; border-radius: 4px; border: 1px solid #b3d4fc;">
-                <span style="color: #666; font-size: 0.9rem;">全拠点合計:</span>
-                <strong style="font-size: 1.1rem; color: #154360;">{{ product.stock_quantity }}</strong>
-            </div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: end; background: #fdfdfd; padding: 1rem; border: 1px solid #eee; border-radius: 8px;">
-            <div class="form-group" style="margin-bottom: 0;">
-                <label style="color: #27ae60; font-weight: bold;">📦 入庫先拠点</label>
-                <select name="location_id" style="width: 100%; padding: 0.5rem; border: 2px solid #27ae60; border-radius: 4px;">
-                    <option value="">-- 入庫する場合は選択 --</option>
-                    {% for loc in locations %}
-                    <option value="{{ loc.id }}">{{ loc.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="form-group" style="margin-bottom: 0;">
-                <label style="color: #27ae60; font-weight: bold;">入庫数（追加分）</label>
+            <div class="form-group">
+                <label style="color: #27ae60; font-weight: bold;">📦 入庫数（追加分）</label>
                 <input type="number" name="stock_add" value="0" min="0" placeholder="0"
                     style="border: 2px solid #27ae60;">
-                <small style="color: #666;">入力した数量が指定拠点に加算されます</small>
+                <small style="color: #666;">入力した数量が現在の在庫に加算されます</small>
             </div>
         </div>
         {% else %}
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-            <div class="form-group">
-                <label>初期在庫の保管場所</label>
-                <select name="location_id" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px;">
-                    {% for loc in locations %}
-                    <option value="{{ loc.id }}">{{ loc.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="form-group">
-                <label>初期在庫数</label>
-                <input type="number" name="stock_quantity" value="0" min="0">
-            </div>
+        <div class="form-group">
+            <label>初期在庫数</label>
+            <input type="number" name="stock_quantity" value="0" min="0">
         </div>
         {% endif %}
         <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">保存する</button>
