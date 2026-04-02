@@ -34,19 +34,51 @@
                     <td>¥{{ "{:,.0f}".format(product.price_retail) }}</td>
                     <td>
                         <div class="stock-cell">
-                            <span class="badge {{ 'badge-danger' if product.stock_quantity < 0 else ('badge-warning' if product.stock_quantity < 5 else 'badge-paid') }}" 
-                                  title="在庫の内訳を表示しています" style="cursor: help;">
+                            <button type="button" class="badge {{ 'badge-danger' if product.stock_quantity < 0 else ('badge-warning' if product.stock_quantity < 5 else 'badge-paid') }}" 
+                                    style="border: none; cursor: pointer; display: block; width: fit-content;"
+                                    onclick="showStockDetail({{ product.id }})">
                                 {{ "{:,.0f}".format(product.stock_quantity) }}
-                            </span>
-                            <div class="location-list">
-                                {% for s in product.location_stocks %}
-                                    {% if s.stock_quantity != 0 %}
-                                    <div class="location-item {{ 'negative' if s.stock_quantity < 0 else '' }}">
-                                        <span>{{ s.location.name }}:</span>
-                                        <span style="font-weight: bold; margin-left: auto;">{{ "{:,.0f}".format(s.stock_quantity) }}</span>
+                            </button>
+                            
+                            <!-- Detailed Breakdown Modal -->
+                            <div id="stockModal-{{ product.id }}" class="modal-overlay" onclick="closeStockDetail({{ product.id }})">
+                                <div class="modal-content-pro" onclick="event.stopPropagation()">
+                                    <div class="modal-header-pro">
+                                        <h3 style="margin: 0; font-size: 1.2rem;">{{ product.name }} 在庫内訳</h3>
+                                        <span class="modal-close-pro" onclick="closeStockDetail({{ product.id }})">&times;</span>
                                     </div>
-                                    {% endif %}
-                                {% endfor %}
+                                    <div class="modal-body-pro">
+                                        <table class="stock-detail-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>拠点名</th>
+                                                    <th style="text-align: right;">現在庫</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for s in product.location_stocks %}
+                                                <tr class="{{ 'negative-row' if s.stock_quantity < 0 else '' }}">
+                                                    <td>{{ s.location.name }}</td>
+                                                    <td class="qty {{ 'negative' if s.stock_quantity < 0 else '' }}">
+                                                        {{ "{:,.0f}".format(s.stock_quantity) }}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                            <tfoot>
+                                                <tr style="border-top: 2px solid #eee; font-weight: bold;">
+                                                    <td>総在庫数</td>
+                                                    <td class="qty {{ 'negative' if product.stock_quantity < 0 else '' }}">
+                                                        {{ "{:,.0f}".format(product.stock_quantity) }}
+                                                    </td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                    </div>
+                                    <div style="margin-top: 1.5rem; text-align: right;">
+                                        <button class="btn btn-sm btn-secondary" onclick="closeStockDetail({{ product.id }})">閉じる</button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </td>
@@ -72,6 +104,14 @@
 </div>
 
 <script>
+function showStockDetail(id) {
+    document.getElementById('stockModal-' + id).style.display = 'flex';
+}
+
+function closeStockDetail(id) {
+    document.getElementById('stockModal-' + id).style.display = 'none';
+}
+
 function addStock(productId) {
     const qty = prompt("入庫する数量（追加分）を入力してください:");
     if (qty !== null && qty.trim() !== '') {
