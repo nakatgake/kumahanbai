@@ -41,7 +41,7 @@
                             </button>
                             
                             <!-- Detailed Breakdown Modal -->
-                            <div id="stockModal-{{ product.id }}" class="modal-overlay" onclick="closeStockDetail({{ product.id }})">
+                            <div id="stockModal-{{ product.id }}" class="modal-overlay" style="display: none;" onclick="closeStockDetail({{ product.id }})">
                                 <div class="modal-content-pro" onclick="event.stopPropagation()">
                                     <div class="modal-header-pro">
                                         <h3 style="margin: 0; font-size: 1.2rem;">{{ product.name }} 在庫内訳</h3>
