@@ -62,7 +62,7 @@
             </tr>
             <tr>
                 <td colspan="3" style="text-align: right; font-weight: bold; color: #1a5276;">合計（税込10%）:</td>
-                <td style="font-weight: bold; color: #1a5276;">¥{{ '{:,.0f}'.format(order.total_amount * 1.1) }}</td>
+                <td style="font-weight: bold; color: #1a5276;">¥{{ '{:,.0f}'.format((order.total_amount * 1.1)|int) }}</td>
             </tr>
         </tfoot>
     </table>

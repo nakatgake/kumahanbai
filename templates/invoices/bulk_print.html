@@ -274,7 +274,7 @@
 
             <div class="grand-total-box">
                 <div class="total-label">御請求金額（税込）</div>
-                <div class="total-amount">{{ "¥{:,.0f}".format(doc.total_amount * 1.1) }}-</div>
+                <div class="total-amount">{{ "¥{:,.0f}".format((doc.total_amount * 1.1)|int) }}-</div>
             </div>
 
             <table class="items-table">
@@ -325,11 +325,11 @@
                     {% endif %}
                     <tr>
                         <td class="summary-label">消費税（10%）</td>
-                        <td class="summary-value">{{ "¥{:,.0f}".format(doc.total_amount * 0.1) }}</td>
+                        <td class="summary-value">{{ "¥{:,.0f}".format((doc.total_amount * 0.1)|int) }}</td>
                     </tr>
                     <tr>
                         <td class="summary-grand-label">合計（税込）</td>
-                        <td class="summary-grand-value">{{ "¥{:,.0f}".format(doc.total_amount * 1.1) }}</td>
+                        <td class="summary-grand-value">{{ "¥{:,.0f}".format((doc.total_amount * 1.1)|int) }}</td>
                     </tr>
                 </table>
             </div>

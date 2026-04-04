@@ -975,7 +975,8 @@ async def create_quotation(
         db.add(item)
         total += subtotal
     
-    final_total_tax_excl = int(total * (1 - (discount_rate / 100)))
+    discount_amount = int(total * (discount_rate / 100))
+    final_total_tax_excl = total - discount_amount
     if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
         return HTMLResponse(content="<script>alert('ご注文税込み金額が1万円以下の為、お受けすることができません。'); history.back();</script>", status_code=400)
 
@@ -1078,7 +1079,8 @@ async def update_quotation(
             if main_loc:
                 update_product_stock(db, pid, main_loc.id, qty, "OUTBOUND", "注文更新による自動出庫")
     
-    final_total_tax_excl = int(total * (1 - (discount_rate / 100)))
+    discount_amount = int(total * (discount_rate / 100))
+    final_total_tax_excl = total - discount_amount
     if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
         return HTMLResponse(content="<script>alert('ご注文税込み金額が1万円以下の為、お受けすることができません。'); history.back();</script>", status_code=400)
 
@@ -1445,7 +1447,8 @@ async def create_direct_order(
             if main_loc:
                 update_product_stock(db, pid, main_loc.id, qty, "OUTBOUND", "直接受注による自動出庫")
     
-    final_total_tax_excl = int(total * (1 - (discount_rate / 100)))
+    discount_amount = int(total * (discount_rate / 100))
+    final_total_tax_excl = total - discount_amount
     if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
         return HTMLResponse(content="<script>alert('ご注文税込み金額が1万円以下の為、お受けすることができません。'); history.back();</script>", status_code=400)
 
@@ -1549,7 +1552,8 @@ async def update_order(
             if main_loc:
                 update_product_stock(db, pid, main_loc.id, qty, "OUTBOUND", "注文編集による自動出庫")
     
-    final_total_tax_excl = int(total * (1 - (discount_rate / 100)))
+    discount_amount = int(total * (discount_rate / 100))
+    final_total_tax_excl = total - discount_amount
     if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
         return HTMLResponse(content="<script>alert('ご注文税込み金額が1万円以下の為、お受けすることができません。'); history.back();</script>", status_code=400)
 
