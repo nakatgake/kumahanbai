@@ -205,7 +205,7 @@
 
     <div class="customer-info">
         <div class="customer-name">
-            {{ customer.company }} {% if customer.name %}{{ customer.name }} 様{% else %}御中{% endif %}
+            {{ customer.company }} {% if customer.name %}{{ customer.name }}{% endif %} {{ customer.honorific or '御中' }}
         </div>
     </div>
 

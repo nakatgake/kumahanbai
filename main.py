@@ -174,6 +174,9 @@ def migrate_db():
     if 'invoice_delivery_method' not in cols:
         print("Migrating customers: adding invoice_delivery_method column...")
         cursor.execute("ALTER TABLE customers ADD COLUMN invoice_delivery_method VARCHAR DEFAULT 'POSTAL'")
+    if 'honorific' not in cols:
+        print("Migrating customers: adding honorific column...")
+        cursor.execute("ALTER TABLE customers ADD COLUMN honorific VARCHAR DEFAULT '御中'")
     
     # Check if system_settings table exists
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='system_settings'")

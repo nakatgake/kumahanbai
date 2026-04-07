@@ -271,7 +271,7 @@
                 <div style="font-size: 10pt; margin-bottom: 5px;">
                     {% if customer.address %}{{ customer.address }}{% endif %}
                 </div>
-                <div class="recipient-name">{{ customer.company }} 御中</div>
+                <div class="recipient-name">{{ customer.company }} {{ customer.honorific or '御中' }}</div>
                 {% if customer.name %}<div style="font-size: 10pt; color: var(--text-light);">担当：{{ customer.name }} 様</div>{% endif %}
             </div>
             <div class="issuer">

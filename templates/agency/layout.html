@@ -48,7 +48,7 @@
             </div>
             <div style="font-size: 1.25rem; font-weight: bold; color: #2c3e50;">
                 <span style="color: #3498db; margin-right: 0.5rem;">🏢</span>
-                {{ agency.company if agency else 'ゲスト' }} 御中
+                {{ agency.company if agency else 'ゲスト' }} {{ agency.honorific if agency and agency.honorific else '御中' }}
             </div>
         </div>
         {% if message %}

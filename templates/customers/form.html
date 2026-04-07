@@ -9,8 +9,19 @@
 <div class="card" style="max-width: 600px;">
     <form action="{{ '/customers/edit/' + (customer.id|string) if customer else '/customers/new' }}" method="post">
         <div class="form-group">
-            <label>会社名</label>
+            <label>会社名・お客様名</label>
             <input type="text" name="company" value="{{ customer.company if customer else '' }}" placeholder="株式会社 〇〇" required>
+        </div>
+        <div class="form-group" style="padding: 0.5rem; background: #fdfdfd; border: 1px solid #eee; border-radius: 4px;">
+            <label style="margin-bottom: 0.2rem; font-size: 0.9em; color: #555;">帳票の敬称</label>
+            <div style="display: flex; gap: 1.5rem;">
+                <label style="display: flex; align-items: center; gap: 0.3rem; margin: 0; cursor: pointer; font-weight: normal;">
+                    <input type="radio" name="honorific" value="御中" {% if not customer or customer.honorific == '御中' %}checked{% endif %}> 御中
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.3rem; margin: 0; cursor: pointer; font-weight: normal;">
+                    <input type="radio" name="honorific" value="様" {% if customer and customer.honorific == '様' %}checked{% endif %}> 様
+                </label>
+            </div>
         </div>
         <div class="form-group">
             <label>担当者名</label>

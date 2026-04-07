@@ -39,6 +39,7 @@ class Customer(Base):
     address = Column(String)
     website_url = Column(String)
     rank = Column(Enum(CustomerRank), default=CustomerRank.RETAIL)
+    honorific = Column(String, default="御中")
     # Agency fields
     is_agency = Column(Boolean, default=False)
     login_id = Column(String, unique=True, nullable=True)
