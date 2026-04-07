@@ -2433,8 +2433,11 @@ async def agency_new_order(
     products_with_price = []
     for p in products:
         price = get_price_for_rank(p, agency.rank)
-        # 熊スプレー判定（名前に「熊スプレー」を含み「ホルダー」を含まないもの）
-        is_spray = '熊スプレー' in p.name and 'ホルダ' not in p.name
+        # 熊スプレーケース単位発注導入対象：
+        # 「熊スプレー」を含み、「ホルダ」「練習」を含まないもののみ case単位
+        is_spray = ('熊スプレー' in p.name
+                    and 'ホルダ' not in p.name
+                    and '練習' not in p.name)
         products_with_price.append({
             "id": p.id,
             "code": p.code,
@@ -2448,6 +2451,15 @@ async def agency_new_order(
             "is_spray": is_spray,
             "stock_quantity": p.stock_quantity
         })
+    # マタギの一撃を先頭に、次にその他のスプレー、最後に通常商品
+    def sort_key(p):
+        if p['is_spray'] and 'マタギ' in p['name']:
+            return 0
+        elif p['is_spray']:
+            return 1
+        else:
+            return 2
+    products_with_price.sort(key=sort_key)
     
     return templates.TemplateResponse(request=request, name="agency/order_form.html", context={
         "request": request,
@@ -2504,7 +2516,9 @@ async def agency_create_order(
             
             # 熊スプレーはケース入力→本数変換＋ケース数に応じた動的価格計算
             CASE_SIZE = 36
-            is_spray = '熊スプレー' in product.name and 'ホルダ' not in product.name
+            is_spray = ('熊スプレー' in product.name
+                        and 'ホルダ' not in product.name
+                        and '練習' not in product.name)
             if is_spray:
                 case_count = qty  # 入力値はケース数
                 actual_qty = case_count * CASE_SIZE  # 本数に変換
