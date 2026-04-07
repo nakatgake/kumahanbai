@@ -3567,6 +3567,48 @@ async def process_inventory_move(
     db.commit()
     return RedirectResponse(url="/products", status_code=303)
 
+@app.get("/admin/fix-inventory-magic", response_class=HTMLResponse)
+async def fix_inventory_magic(db: Session = Depends(get_db)):
+    # 1. 拠点をすべて本社にする（全商品）
+    main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+    if not main_loc:
+        return "本社倉庫が見つかりません"
+        
+    products = db.query(models.Product).all()
+    
+    target_stocks = {
+        "4595558124064": 982,
+        "4595558124026": 1699,
+        "4595558124071": 9996,
+        "4595558124019": 16532,
+        "4595558124033": 4993,
+        "4595558124057": 998,
+        "4595558124040": 490
+    }
+    
+    for p in products:
+        # DB上のすべての拠点在庫を削除する
+        for stock in p.location_stocks:
+            db.delete(stock)
+        db.flush()
+        
+        # 指定の在庫数があればそれを優先し、なければ既存の全体在庫数をそのまま採用する
+        target_qty = target_stocks.get(p.code, p.stock_quantity)
+        
+        # 本社に全在庫を入れる
+        new_stock = models.ProductLocationStock(
+            product_id=p.id,
+            location_id=main_loc.id,
+            stock_quantity=target_qty
+        )
+        db.add(new_stock)
+        
+        # 総在庫数を上書きする
+        p.stock_quantity = target_qty
+        
+    db.commit()
+    return "<h1>処理完了</h1><p>すべての在庫が本社に集約され、指定の在庫数に上書きされました。</p><a href='/products'>商品台帳へ戻る</a>"
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
