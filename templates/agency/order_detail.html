@@ -46,9 +46,19 @@
             </tr>
         </thead>
         <tbody>
-            {% for item in order.items %}
+            {# 商品項目（送料以外） #}
+            {% for item in order.items if item.product_name != '送料' %}
             <tr>
                 <td>{{ item.product_name }}</td>
+                <td>¥{{ '{:,.0f}'.format(item.unit_price) }}</td>
+                <td>{{ item.quantity }}</td>
+                <td>¥{{ '{:,.0f}'.format(item.subtotal) }}</td>
+            </tr>
+            {% endfor %}
+            {# 送料項目 #}
+            {% for item in order.items if item.product_name == '送料' %}
+            <tr style="background: #fff9f0;">
+                <td style="font-weight: bold; color: #d35400;">{{ item.product_name }}</td>
                 <td>¥{{ '{:,.0f}'.format(item.unit_price) }}</td>
                 <td>{{ item.quantity }}</td>
                 <td>¥{{ '{:,.0f}'.format(item.subtotal) }}</td>

@@ -2550,6 +2550,27 @@ async def agency_create_order(
             db.add(item)
             total += subtotal
         
+        product_total_tax_excl = total
+        product_total_tax_incl = int(product_total_tax_excl * 1.1)
+        
+        if product_total_tax_incl <= 10000:
+            return HTMLResponse(content="<script>alert('ご注文合計（税込）が10,000円以下のため、発注を承ることができません。商品を追加してください。'); history.back();</script>", status_code=400)
+            
+        shipping_fee = 0
+        if product_total_tax_incl < 30000:
+            shipping_fee = 1200
+            # 送料明細の追加
+            shipping_item = models.AgencyOrderItem(
+                agency_order_id=agency_order.id,
+                product_id=None,
+                product_name="送料",
+                quantity=1,
+                unit_price=shipping_fee,
+                subtotal=shipping_fee
+            )
+            db.add(shipping_item)
+            total += shipping_fee
+
         agency_order.total_amount = total
         
         # 当社への通知
@@ -2557,7 +2578,7 @@ async def agency_create_order(
             target_type="admin",
             target_id=None,
             title="新規代理店発注",
-            message=f"{agency.company}様から新規発注（{order_number}）がありました。合計: ¥{total:,.0f}",
+            message=f"{agency.company}様から新規発注（{order_number}）がありました。税込合計: ¥{(product_total_tax_incl + shipping_fee):,.0f}",
             link="/agency-orders",
             related_type="AgencyOrder",
             related_id=agency_order.id
@@ -2936,7 +2957,9 @@ async def convert_agency_order_to_main(
     db.flush()
     
     # 2. Create Items + 在庫減算
-    for item in agency_order.items:
+    # 送料が最後になるように並べ替え
+    sorted_items = sorted(agency_order.items, key=lambda x: 1 if x.product_name == "送料" else 0)
+    for item in sorted_items:
         qi = models.QuotationItem(
             quotation_id=new_quote.id,
             product_id=item.product_id,

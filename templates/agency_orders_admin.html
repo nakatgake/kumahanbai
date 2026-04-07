@@ -75,9 +75,19 @@
                         <summary style="cursor: pointer; color: #3498db; font-size: 0.85rem;">明細を表示</summary>
                         <table style="margin: 0.5rem 0; font-size: 0.9rem;">
                             <tr><th>商品名</th><th>単価</th><th>数量</th><th>小計</th></tr>
-                            {% for item in order.items %}
+                            {# 商品項目（送料以外） #}
+                            {% for item in order.items if item.product_name != '送料' %}
                             <tr>
                                 <td>{{ item.product_name }}</td>
+                                <td>¥{{ '{:,.0f}'.format(item.unit_price) }}</td>
+                                <td>{{ item.quantity }}</td>
+                                <td>¥{{ '{:,.0f}'.format(item.subtotal) }}</td>
+                            </tr>
+                            {% endfor %}
+                            {# 送料項目 #}
+                            {% for item in order.items if item.product_name == '送料' %}
+                            <tr style="background: #fff9f0;">
+                                <td style="font-weight: bold; color: #d35400;">{{ item.product_name }} (自動追加)</td>
                                 <td>¥{{ '{:,.0f}'.format(item.unit_price) }}</td>
                                 <td>{{ item.quantity }}</td>
                                 <td>¥{{ '{:,.0f}'.format(item.subtotal) }}</td>

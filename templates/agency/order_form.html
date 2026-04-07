@@ -154,6 +154,10 @@
                     <span class="label">合計（税抜）:</span>
                     <span class="value" id="totalAmount">¥0</span>
                 </div>
+                <div class="total-item" id="shippingRow" style="display: none;">
+                    <span class="label">送料:</span>
+                    <span class="value" id="shippingFee">¥0</span>
+                </div>
                 <div class="total-item highlight">
                     <span class="label">合計（税込）:</span>
                     <span class="value" id="totalWithTax">¥0</span>
@@ -269,19 +273,58 @@ function updateTotal() {
         total += sub;
     });
 
+    const taxInclTotal = Math.floor(total * 1.1);
+    let shipping = 0;
+    if (total > 0) {
+        if (taxInclTotal < 30000) {
+            shipping = 1200;
+        } else {
+            shipping = 0;
+        }
+    }
+
     document.getElementById('totalAmount').textContent = '¥' + total.toLocaleString();
-    document.getElementById('totalWithTax').textContent = '¥' + Math.floor(total * 1.1).toLocaleString();
+    document.getElementById('shippingFee').textContent = '¥' + shipping.toLocaleString();
+    document.getElementById('shippingRow').style.display = shipping > 0 ? 'flex' : 'none';
+    document.getElementById('totalWithTax').textContent = '¥' + (taxInclTotal + shipping).toLocaleString();
 }
 
 function validateOrder() {
-    let hasOrder = false;
-    document.querySelectorAll('.case-qty-input, .qty-input').forEach(input => {
-        if (parseInt(input.value) > 0) hasOrder = true;
+    let totalTaxExcl = 0;
+    document.querySelectorAll('.case-qty-input').forEach(input => {
+        const cases = parseInt(input.value) || 0;
+        if (cases <= 0) return;
+        const bottles = cases * CASE_SIZE;
+        const priceA = parseFloat(input.dataset.priceA) || 0;
+        const priceB = parseFloat(input.dataset.priceB) || 0;
+        const priceC = parseFloat(input.dataset.priceC) || 0;
+        const priceD = parseFloat(input.dataset.priceD) || 0;
+        const priceE = parseFloat(input.dataset.priceE) || 0;
+        let price = priceE;
+        if (cases >= 30) price = priceA;
+        else if (cases >= 25) price = priceB;
+        else if (cases >= 10) price = priceC;
+        else if (cases >= 5) price = priceD;
+        totalTaxExcl += bottles * price;
     });
-    if (!hasOrder) {
+    document.querySelectorAll('.product-row').forEach(row => {
+        const price = parseFloat(row.dataset.price) || 0;
+        const qty = parseInt(row.querySelector('.qty-input').value) || 0;
+        totalTaxExcl += price * qty;
+    });
+
+    const totalTaxIncl = Math.floor(totalTaxExcl * 1.1);
+
+    if (totalTaxExcl === 0) {
         alert('商品を1つ以上入力してください');
         return false;
     }
+
+    if (totalTaxIncl <= 10000) {
+        alert('ご注文合計（税込）が10,000円以下のため、発注を承ることができません。商品を追加してください。');
+        return false;
+    }
+
     return confirm('この内容で発注してよろしいですか？');
 }
 
