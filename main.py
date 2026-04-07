@@ -2433,11 +2433,19 @@ async def agency_new_order(
     products_with_price = []
     for p in products:
         price = get_price_for_rank(p, agency.rank)
+        # 熊スプレー判定（名前に「熊スプレー」を含み「ホルダー」を含まないもの）
+        is_spray = '熊スプレー' in p.name and 'ホルダ' not in p.name
         products_with_price.append({
             "id": p.id,
             "code": p.code,
             "name": p.name,
             "price": price,
+            "price_a": p.price_a or 0,
+            "price_b": p.price_b or 0,
+            "price_c": p.price_c or 0,
+            "price_d": p.price_d or 0,
+            "price_e": p.price_e or 0,
+            "is_spray": is_spray,
             "stock_quantity": p.stock_quantity
         })
     
@@ -2493,14 +2501,35 @@ async def agency_create_order(
             product = db.query(models.Product).get(int(p_id))
             if not product:
                 continue
-            price = get_price_for_rank(product, agency.rank)
-            subtotal = qty * price
+            
+            # 熊スプレーはケース入力→本数変換＋ケース数に応じた動的価格計算
+            CASE_SIZE = 36
+            is_spray = '熊スプレー' in product.name and 'ホルダ' not in product.name
+            if is_spray:
+                case_count = qty  # 入力値はケース数
+                actual_qty = case_count * CASE_SIZE  # 本数に変換
+                # ケース数に応じたランク価格を適用
+                if case_count >= 30:
+                    price = product.price_a or get_price_for_rank(product, agency.rank)
+                elif case_count >= 25:
+                    price = product.price_b or get_price_for_rank(product, agency.rank)
+                elif case_count >= 10:
+                    price = product.price_c or get_price_for_rank(product, agency.rank)
+                elif case_count >= 5:
+                    price = product.price_d or get_price_for_rank(product, agency.rank)
+                else:
+                    price = product.price_e or get_price_for_rank(product, agency.rank)
+            else:
+                actual_qty = qty
+                price = get_price_for_rank(product, agency.rank)
+            
+            subtotal = actual_qty * price
             
             item = models.AgencyOrderItem(
                 agency_order_id=agency_order.id,
                 product_id=product.id,
                 product_name=product.name,
-                quantity=qty,
+                quantity=actual_qty,  # 常に本数で保存
                 unit_price=price,
                 subtotal=subtotal
             )

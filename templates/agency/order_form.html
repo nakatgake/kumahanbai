@@ -6,43 +6,138 @@
     <a href="/agency/orders" class="btn" style="background: #ccc;">発注履歴へ</a>
 </div>
 
-<form action="/agency/order/new" method="post" id="orderForm" style="padding-bottom: 100px;">
-    <div class="card">
-        <h3 style="margin-bottom: 1rem;">商品一覧</h3>
-        <p style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">数量を入力すると、合計金額が自動計算されます。</p>
-        
-        <div class="table-responsive">
-        <table>
-            <thead>
-                <tr>
-                    <th>商品コード</th>
-                    <th>商品名</th>
-                    <th style="width: 120px;">単価</th>
-                    <th style="width: 100px;">数量</th>
-                    <th style="width: 120px;">小計</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for p in products %}
-                <tr class="product-row" data-price="{{ p.price }}">
-                    <td>{{ p.code }}</td>
-                    <td>{{ p.name }}</td>
-                    <td>¥{{ "{:,.0f}".format(p.price) }}</td>
-                    <td>
+<form action="/agency/order/new" method="post" id="orderForm" style="padding-bottom: 120px;">
+
+    {# ---- 熊スプレー ケース発注セクション ---- #}
+    {% for p in products if p.is_spray %}
+    <div class="card spray-card">
+        <div class="spray-header">
+            <div>
+                <span class="spray-badge">🐻 ケース発注</span>
+                <h3 style="margin: 0.5rem 0 0.2rem;">{{ p.name }}</h3>
+                <p style="color: #666; font-size: 0.9rem; margin: 0;">商品コード: {{ p.code }} ／ 1ケース = 36本入り</p>
+            </div>
+        </div>
+
+        {# 価格表 #}
+        <div class="price-table-wrap">
+            <h4 style="margin: 0 0 0.8rem; color: #1a5276; font-size: 1rem;">📊 ボリュームディスカウント価格表（1本あたり・税抜）</h4>
+            <table class="price-table" id="priceTable-{{ p.id }}">
+                <thead>
+                    <tr>
+                        <th>ケース数</th>
+                        <th>本数</th>
+                        <th>単価（1本）</th>
+                        <th>合計金額（税抜）</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="rank-row" data-min="30" data-price="{{ p.price_a }}" id="row-a-{{ p.id }}">
+                        <td><strong>30ケース以上</strong></td>
+                        <td>1,080本〜</td>
+                        <td class="price-val">¥{{ "{:,.0f}".format(p.price_a) }}</td>
+                        <td class="row-total">—</td>
+                    </tr>
+                    <tr class="rank-row" data-min="25" data-price="{{ p.price_b }}" id="row-b-{{ p.id }}">
+                        <td><strong>25〜29ケース</strong></td>
+                        <td>900〜1,044本</td>
+                        <td class="price-val">¥{{ "{:,.0f}".format(p.price_b) }}</td>
+                        <td class="row-total">—</td>
+                    </tr>
+                    <tr class="rank-row" data-min="10" data-price="{{ p.price_c }}" id="row-c-{{ p.id }}">
+                        <td><strong>10〜24ケース</strong></td>
+                        <td>360〜864本</td>
+                        <td class="price-val">¥{{ "{:,.0f}".format(p.price_c) }}</td>
+                        <td class="row-total">—</td>
+                    </tr>
+                    <tr class="rank-row" data-min="5" data-price="{{ p.price_d }}" id="row-d-{{ p.id }}">
+                        <td><strong>5〜9ケース</strong></td>
+                        <td>180〜324本</td>
+                        <td class="price-val">¥{{ "{:,.0f}".format(p.price_d) }}</td>
+                        <td class="row-total">—</td>
+                    </tr>
+                    <tr class="rank-row" data-min="1" data-price="{{ p.price_e }}" id="row-e-{{ p.id }}">
+                        <td><strong>1〜4ケース</strong></td>
+                        <td>36〜144本</td>
+                        <td class="price-val">¥{{ "{:,.0f}".format(p.price_e) }}</td>
+                        <td class="row-total">—</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        {# ケース数入力 #}
+        <div class="case-input-wrap">
+            <div class="case-input-inner">
+                <div style="flex:1;">
+                    <label class="case-label">発注ケース数を入力してください</label>
+                    <div style="display:flex; align-items:center; gap:1rem; margin-top:0.5rem;">
                         <input type="hidden" name="product_id[]" value="{{ p.id }}">
-                        <input type="number" name="quantity[]" value="0" min="0" 
-                               style="width: 80px;" 
-                               class="qty-input"
-                               onchange="updateTotal()" 
-                               onkeyup="updateTotal()">
-                    </td>
-                    <td class="row-subtotal">¥0</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                        <input type="number" name="quantity[]" id="caseQty-{{ p.id }}" value="0" min="0"
+                               class="case-qty-input"
+                               data-product-id="{{ p.id }}"
+                               data-price-a="{{ p.price_a }}"
+                               data-price-b="{{ p.price_b }}"
+                               data-price-c="{{ p.price_c }}"
+                               data-price-d="{{ p.price_d }}"
+                               data-price-e="{{ p.price_e }}"
+                               oninput="updateSpray({{ p.id }})"
+                               placeholder="0">
+                        <span style="font-size:1rem; color:#555;">ケース</span>
+                        <span style="color:#888; font-size:0.9rem;">（= <strong id="bottles-{{ p.id }}">0</strong> 本）</span>
+                    </div>
+                </div>
+                <div class="case-summary" id="spraySummary-{{ p.id }}">
+                    <div class="rank-badge-display" id="rankBadge-{{ p.id }}">—</div>
+                    <div style="font-size:0.85rem; color:#666; margin-bottom:0.3rem;">適用単価</div>
+                    <div style="font-size:1.5rem; font-weight:bold; color:#c0392b;" id="sprayUnitPrice-{{ p.id }}">¥0</div>
+                    <div style="font-size:0.85rem; color:#666; margin: 0.5rem 0 0.2rem;">小計（税抜）</div>
+                    <div style="font-size:1.8rem; font-weight:bold; color:#1a5276;" id="spraySubtotal-{{ p.id }}">¥0</div>
+                </div>
+            </div>
         </div>
     </div>
+    {% endfor %}
+
+    {# ---- 通常商品セクション ---- #}
+    {% set has_normal = namespace(value=false) %}
+    {% for p in products if not p.is_spray %}{% set has_normal.value = true %}{% endfor %}
+    {% if has_normal.value %}
+    <div class="card">
+        <h3 style="margin-bottom: 1rem;">その他の商品</h3>
+        <p style="font-size: 0.9rem; color: #666; margin-bottom: 1rem;">数量を入力すると、合計金額が自動計算されます。</p>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>商品コード</th>
+                        <th>商品名</th>
+                        <th style="width: 120px;">単価</th>
+                        <th style="width: 100px;">数量</th>
+                        <th style="width: 120px;">小計</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in products if not p.is_spray %}
+                    <tr class="product-row" data-price="{{ p.price }}">
+                        <td>{{ p.code }}</td>
+                        <td>{{ p.name }}</td>
+                        <td>¥{{ "{:,.0f}".format(p.price) }}</td>
+                        <td>
+                            <input type="hidden" name="product_id[]" value="{{ p.id }}">
+                            <input type="number" name="quantity[]" value="0" min="0"
+                                   style="width: 80px;"
+                                   class="qty-input"
+                                   onchange="updateTotal()" onkeyup="updateTotal()">
+                        </td>
+                        <td class="row-subtotal">¥0</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
 
     <div class="card" style="margin-bottom: 2rem;">
         <div class="form-group">
@@ -51,7 +146,7 @@
         </div>
     </div>
 
-    <!-- 固定フッター (Sticky Footer) -->
+    <!-- 固定フッター -->
     <div class="sticky-footer">
         <div class="sticky-content">
             <div class="sticky-totals">
@@ -74,40 +169,117 @@
 </form>
 
 <script>
+const CASE_SIZE = 36;
+
+// ランク情報
+const ranks = [
+    { minCases: 30, label: "Aランク（30ケース以上）", key: "a" },
+    { minCases: 25, label: "Bランク（25〜29ケース）", key: "b" },
+    { minCases: 10, label: "Cランク（10〜24ケース）", key: "c" },
+    { minCases: 5,  label: "Dランク（5〜9ケース）",   key: "d" },
+    { minCases: 1,  label: "Eランク（1〜4ケース）",   key: "e" },
+];
+const rankColors = { a: "#1a5276", b: "#117a65", c: "#7d6608", d: "#784212", e: "#6e2f8a" };
+
+function updateSpray(productId) {
+    const input = document.getElementById('caseQty-' + productId);
+    const cases = parseInt(input.value) || 0;
+    const bottles = cases * CASE_SIZE;
+
+    document.getElementById('bottles-' + productId).textContent = bottles.toLocaleString();
+
+    // 適用ランク判定
+    let rank = null;
+    for (const r of ranks) {
+        if (cases >= r.minCases) { rank = r; break; }
+    }
+
+    const priceA = parseFloat(input.dataset.priceA) || 0;
+    const priceB = parseFloat(input.dataset.priceB) || 0;
+    const priceC = parseFloat(input.dataset.priceC) || 0;
+    const priceD = parseFloat(input.dataset.priceD) || 0;
+    const priceE = parseFloat(input.dataset.priceE) || 0;
+    const prices = { a: priceA, b: priceB, c: priceC, d: priceD, e: priceE };
+
+    const unitPrice = rank ? prices[rank.key] : 0;
+    const subtotal = bottles * unitPrice;
+
+    // 価格表の行ハイライト
+    document.querySelectorAll('.rank-row').forEach(row => {
+        row.classList.remove('active-rank');
+        row.querySelector('.row-total').textContent = '—';
+    });
+    if (rank) {
+        const activeRow = document.getElementById('row-' + rank.key + '-' + productId);
+        if (activeRow) {
+            activeRow.classList.add('active-rank');
+            activeRow.querySelector('.row-total').textContent = '¥' + subtotal.toLocaleString();
+        }
+    }
+
+    // サマリー表示
+    const badge = document.getElementById('rankBadge-' + productId);
+    const unitEl = document.getElementById('sprayUnitPrice-' + productId);
+    const subtotalEl = document.getElementById('spraySubtotal-' + productId);
+
+    if (cases > 0 && rank) {
+        badge.textContent = rank.label;
+        badge.style.background = rankColors[rank.key];
+        badge.style.display = 'inline-block';
+        unitEl.textContent = '¥' + unitPrice.toLocaleString();
+        subtotalEl.textContent = '¥' + subtotal.toLocaleString();
+    } else {
+        badge.textContent = '—';
+        badge.style.background = '#aaa';
+        unitEl.textContent = '¥0';
+        subtotalEl.textContent = '¥0';
+    }
+
+    updateTotal();
+}
+
 function updateTotal() {
     let total = 0;
-    const rows = document.querySelectorAll('.product-row');
-    rows.forEach(row => {
-        const price = parseFloat(row.dataset.price);
-        const qty = parseInt(row.querySelector('.qty-input').value) || 0;
-        const subtotal = price * qty;
-        
-        row.querySelector('.row-subtotal').textContent = '¥' + subtotal.toLocaleString();
-        
-        if (qty > 0) {
-            row.style.background = '#fffde7'; 
-        } else {
-            row.style.background = '';
-        }
-        
-        total += subtotal;
+
+    // 熊スプレーの合計
+    document.querySelectorAll('.case-qty-input').forEach(input => {
+        const cases = parseInt(input.value) || 0;
+        if (cases <= 0) return;
+        const bottles = cases * CASE_SIZE;
+        const priceA = parseFloat(input.dataset.priceA) || 0;
+        const priceB = parseFloat(input.dataset.priceB) || 0;
+        const priceC = parseFloat(input.dataset.priceC) || 0;
+        const priceD = parseFloat(input.dataset.priceD) || 0;
+        const priceE = parseFloat(input.dataset.priceE) || 0;
+        let price = priceE;
+        if (cases >= 30) price = priceA;
+        else if (cases >= 25) price = priceB;
+        else if (cases >= 10) price = priceC;
+        else if (cases >= 5) price = priceD;
+        total += bottles * price;
     });
-    
+
+    // 通常商品の合計
+    document.querySelectorAll('.product-row').forEach(row => {
+        const price = parseFloat(row.dataset.price) || 0;
+        const qty = parseInt(row.querySelector('.qty-input').value) || 0;
+        const sub = price * qty;
+        row.querySelector('.row-subtotal').textContent = '¥' + sub.toLocaleString();
+        row.style.background = qty > 0 ? '#fffde7' : '';
+        total += sub;
+    });
+
     document.getElementById('totalAmount').textContent = '¥' + total.toLocaleString();
     document.getElementById('totalWithTax').textContent = '¥' + Math.floor(total * 1.1).toLocaleString();
 }
 
 function validateOrder() {
     let hasOrder = false;
-    const inputs = document.querySelectorAll('.qty-input');
-    inputs.forEach(input => {
-        if (parseInt(input.value) > 0) {
-            hasOrder = true;
-        }
+    document.querySelectorAll('.case-qty-input, .qty-input').forEach(input => {
+        if (parseInt(input.value) > 0) hasOrder = true;
     });
-
     if (!hasOrder) {
-        alert('数量を1つ以上入力してください');
+        alert('商品を1つ以上入力してください');
         return false;
     }
     return confirm('この内容で発注してよろしいですか？');
@@ -117,117 +289,124 @@ updateTotal();
 </script>
 
 <style>
-/* Table Styles */
+/* Spray Card Styles */
+.spray-card { border: 2px solid #1a5276; border-radius: 12px; overflow: hidden; }
+.spray-header {
+    background: linear-gradient(135deg, #1a5276 0%, #2980b9 100%);
+    color: white;
+    padding: 1.2rem 1.5rem;
+}
+.spray-badge {
+    background: rgba(255,255,255,0.2);
+    color: white;
+    font-size: 0.8rem;
+    font-weight: bold;
+    padding: 0.2rem 0.7rem;
+    border-radius: 20px;
+    letter-spacing: 0.05em;
+}
+
+/* Price Table */
+.price-table-wrap {
+    padding: 1.2rem 1.5rem;
+    background: #f8fbff;
+    border-bottom: 1px solid #d6eaf8;
+}
+.price-table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+.price-table th {
+    background: #1a5276;
+    color: white;
+    padding: 0.6rem 1rem;
+    text-align: left;
+    font-weight: 600;
+}
+.price-table td { padding: 0.6rem 1rem; border-bottom: 1px solid #eee; }
+.price-table .rank-row { transition: background 0.2s; }
+.price-table .rank-row.active-rank {
+    background: linear-gradient(90deg, #fff9c4, #fffde7) !important;
+    font-weight: bold;
+    border-left: 4px solid #f39c12;
+}
+.price-table .price-val { font-weight: bold; color: #c0392b; }
+.price-table .row-total { font-weight: bold; color: #1a5276; text-align: right; }
+
+/* Case Input */
+.case-input-wrap { padding: 1.2rem 1.5rem; }
+.case-input-inner { display: flex; gap: 2rem; align-items: center; flex-wrap: wrap; }
+.case-label { font-weight: bold; font-size: 1rem; color: #2c3e50; }
+.case-qty-input {
+    width: 120px;
+    padding: 0.7rem;
+    font-size: 1.5rem;
+    font-weight: bold;
+    text-align: center;
+    border: 2px solid #1a5276;
+    border-radius: 8px;
+    color: #1a5276;
+    outline: none;
+    transition: box-shadow 0.2s;
+}
+.case-qty-input:focus { box-shadow: 0 0 0 3px rgba(26,82,118,0.25); }
+
+.case-summary {
+    background: #f4f8fb;
+    border: 1px solid #d6eaf8;
+    border-radius: 10px;
+    padding: 1rem 1.5rem;
+    min-width: 220px;
+    text-align: center;
+}
+.rank-badge-display {
+    display: inline-block;
+    background: #aaa;
+    color: white;
+    font-size: 0.8rem;
+    font-weight: bold;
+    padding: 0.25rem 0.9rem;
+    border-radius: 20px;
+    margin-bottom: 0.5rem;
+    transition: background 0.3s;
+}
+
+/* Normal products table */
 table { border-collapse: collapse; width: 100%; }
 th, td { border: 1px solid #ddd; padding: 0.8rem; }
 tr:hover { background: #fcfcfc; }
 .qty-input { border: 1px solid #ccc; border-radius: 4px; padding: 6px; text-align: center; font-size: 1rem; }
-.qty-input:focus { background: #fff9c4; outline: none; border-color: #fbc02d; box-shadow: 0 0 5px rgba(251, 192, 45, 0.5); }
+.qty-input:focus { background: #fff9c4; outline: none; border-color: #fbc02d; }
 
-/* Sticky Footer Styles */
+/* Sticky Footer */
 .sticky-footer {
-    position: fixed;
-    bottom: 0;
-    left: 260px; /* サイドバーの幅に合わせて調整 */
-    right: 0;
+    position: fixed; bottom: 0; left: 260px; right: 0;
     background: #fff;
     box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
-    padding: 1rem 2rem;
-    z-index: 1000;
+    padding: 1rem 2rem; z-index: 1000;
     border-top: 1px solid #eee;
 }
-
-.sticky-content {
-    max-width: 1200px;
-    margin: 0 auto;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 2rem;
-}
-
-.sticky-totals {
-    display: flex;
-    gap: 2rem;
-}
-
-.total-item {
-    display: flex;
-    flex-direction: column;
-}
-
-.total-item .label {
-    font-size: 0.85rem;
-    color: #666;
-    font-weight: bold;
-}
-
-.total-item .value {
-    font-size: 1.25rem;
-    font-weight: bold;
-    color: #333;
-}
-
-.total-item.highlight .value {
-    color: #e74c3c;
-    font-size: 1.5rem;
-}
-
-.sticky-actions {
-    flex: 1;
-    max-width: 400px;
-}
-
+.sticky-content { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 2rem; }
+.sticky-totals { display: flex; gap: 2rem; }
+.total-item { display: flex; flex-direction: column; }
+.total-item .label { font-size: 0.85rem; color: #666; font-weight: bold; }
+.total-item .value { font-size: 1.25rem; font-weight: bold; color: #333; }
+.total-item.highlight .value { color: #e74c3c; font-size: 1.5rem; }
+.sticky-actions { flex: 1; max-width: 400px; }
 .submit-btn {
-    width: 100%;
-    padding: 1rem;
+    width: 100%; padding: 1rem;
     background: linear-gradient(135deg, #1a5276 0%, #2980b9 100%);
-    color: white;
-    border: none;
-    border-radius: 12px;
-    font-size: 1.2rem;
-    font-weight: bold;
-    cursor: pointer;
+    color: white; border: none; border-radius: 12px;
+    font-size: 1.2rem; font-weight: bold; cursor: pointer;
     transition: all 0.3s ease;
     box-shadow: 0 4px 15px rgba(26, 82, 118, 0.3);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.8rem;
+    display: flex; align-items: center; justify-content: center; gap: 0.8rem;
 }
+.submit-btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
 
-.submit-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(26, 82, 118, 0.4);
-    filter: brightness(1.1);
-}
-
-.submit-btn:active {
-    transform: translateY(0);
-}
-
-/* Responsiveness */
 @media (max-width: 768px) {
-    .sticky-footer {
-        left: 0;
-        padding: 0.8rem 1rem;
-    }
-    .sticky-content {
-        flex-direction: column;
-        gap: 0.8rem;
-    }
-    .sticky-totals {
-        width: 100%;
-        justify-content: space-around;
-        gap: 0.5rem;
-    }
-    .sticky-actions {
-        width: 100%;
-        max-width: none;
-    }
-    .total-item .value { font-size: 1.1rem; }
-    .total-item.highlight .value { font-size: 1.25rem; }
-    .submit-btn { padding: 0.8rem; font-size: 1.1rem; }
+    .sticky-footer { left: 0; padding: 0.8rem 1rem; }
+    .sticky-content { flex-direction: column; gap: 0.8rem; }
+    .sticky-totals { width: 100%; justify-content: space-around; }
+    .sticky-actions { width: 100%; max-width: none; }
+    .case-input-inner { flex-direction: column; }
 }
 </style>
 {% endblock %}
