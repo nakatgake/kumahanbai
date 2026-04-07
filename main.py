@@ -792,7 +792,11 @@ async def add_stock(
 ):
     product = db.query(models.Product).get(product_id)
     if product and quantity > 0:
-        product.stock_quantity += quantity
+        main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+        if main_loc:
+            update_product_stock(db, product.id, main_loc.id, quantity, "INBOUND", "商品一覧画面からの在庫追加")
+        else:
+            product.stock_quantity += quantity
         db.commit()
     return RedirectResponse(url="/products", status_code=303)
 
@@ -1045,7 +1049,7 @@ async def update_quotation(
             if old_item.product_id:
                 main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
                 if main_loc:
-                    update_product_stock(db, old_item.product_id, main_loc.id, -old_item.quantity, "INBOUND", "注文キャンセルによる在庫戻し")
+                    update_product_stock(db, old_item.product_id, main_loc.id, old_item.quantity, "INBOUND", "注文編集による在庫戻し")
 
     # 洗替方式で明細を更新
     db.query(models.QuotationItem).filter(models.QuotationItem.quotation_id == quote_id).delete()
@@ -1102,7 +1106,7 @@ async def delete_quotation(
                     if item.product_id:
                         main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
                         if main_loc:
-                            update_product_stock(db, item.product_id, main_loc.id, -item.quantity, "INBOUND", "見積削除による在庫戻し")
+                            update_product_stock(db, item.product_id, main_loc.id, item.quantity, "INBOUND", "見積削除による在庫戻し")
             db.delete(quote)
             db.commit()
     except Exception as e:
@@ -1120,7 +1124,7 @@ async def cancel_quotation(id: int, db: Session = Depends(get_db), user: models.
                 if item.product_id:
                     main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
                     if main_loc:
-                        update_product_stock(db, item.product_id, main_loc.id, -item.quantity, "INBOUND", "注文キャンセルによる在庫戻し")
+                        update_product_stock(db, item.product_id, main_loc.id, item.quantity, "INBOUND", "注文キャンセルによる在庫戻し")
             db.delete(quote.order)
         quote.status = models.QuoteStatus.DRAFT
         db.commit()
@@ -1518,7 +1522,7 @@ async def update_order(
         if old_item.product_id:
             main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
             if main_loc:
-                update_product_stock(db, old_item.product_id, main_loc.id, -old_item.quantity, "INBOUND", "注文編集による在庫戻し")
+                update_product_stock(db, old_item.product_id, main_loc.id, old_item.quantity, "INBOUND", "注文編集による在庫戻し")
 
     # 洗替方式で明細を更新
     db.query(models.QuotationItem).filter(models.QuotationItem.quotation_id == quotation.id).delete()
@@ -1607,7 +1611,7 @@ async def delete_order(
                     if item.product_id:
                         main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
                         if main_loc:
-                            update_product_stock(db, item.product_id, main_loc.id, -item.quantity, "INBOUND", "受注削除による在庫戻し")
+                            update_product_stock(db, item.product_id, main_loc.id, item.quantity, "INBOUND", "受注削除による在庫戻し")
             db.delete(order)
             db.commit()
     except Exception as e:
@@ -1948,7 +1952,7 @@ async def delete_invoice(invoice_id: int, db: Session = Depends(get_db), user: m
                 if item.product_id:
                     main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
                     if main_loc:
-                        update_product_stock(db, item.product_id, main_loc.id, -item.quantity, "INBOUND", "請求書削除による在庫戻し")
+                        update_product_stock(db, item.product_id, main_loc.id, item.quantity, "INBOUND", "請求書削除による在庫戻し")
         # 紐づく受注も削除（受注がなくなれば請求も不要）
         if order:
             db.delete(order)
