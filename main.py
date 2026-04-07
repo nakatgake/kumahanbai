@@ -527,8 +527,13 @@ async def create_customer(
     user: models.User = Depends(get_active_user)
 ):
     customer = models.Customer(
-        name=name, company=company, zip_code=zip_code, 
-        email=email, phone=phone, address=address, website_url=website_url,
+        name="" if name == "None" else name,
+        company=company,
+        zip_code="" if zip_code == "None" else zip_code, 
+        email="" if email == "None" else email,
+        phone="" if phone == "None" else phone,
+        address="" if address == "None" else address,
+        website_url="" if website_url == "None" else website_url,
         rank=models.CustomerRank[rank],
         honorific=honorific,
         is_agency=is_agency,
@@ -583,13 +588,13 @@ async def update_customer(
 ):
     customer = db.query(models.Customer).get(customer_id)
     if customer:
-        customer.name = name
+        customer.name = "" if name == "None" else name
         customer.company = company
-        customer.zip_code = zip_code
-        customer.email = email
-        customer.phone = phone
-        customer.address = address
-        customer.website_url = website_url
+        customer.zip_code = "" if zip_code == "None" else zip_code
+        customer.email = "" if email == "None" else email
+        customer.phone = "" if phone == "None" else phone
+        customer.address = "" if address == "None" else address
+        customer.website_url = "" if website_url == "None" else website_url
         customer.rank = models.CustomerRank[rank]
         customer.honorific = honorific
         customer.is_agency = is_agency
