@@ -791,7 +791,7 @@ async def add_stock(
     user: models.User = Depends(get_active_user)
 ):
     product = db.query(models.Product).get(product_id)
-    if product and quantity > 0:
+    if product and quantity != 0:
         main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
         if main_loc:
             update_product_stock(db, product.id, main_loc.id, quantity, "INBOUND", "商品一覧画面からの在庫追加")

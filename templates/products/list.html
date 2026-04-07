@@ -113,14 +113,14 @@ function closeStockDetail(id) {
 }
 
 function addStock(productId) {
-    const qty = prompt("入庫する数量（追加分）を入力してください:");
+    const qty = prompt("入庫・調整する数量を入力してください（減算の場合は -10 のようにマイナスを入力）:");
     if (qty !== null && qty.trim() !== '') {
         const parsedQty = parseInt(qty.trim(), 10);
-        if (!isNaN(parsedQty) && parsedQty > 0) {
+        if (!isNaN(parsedQty) && parsedQty !== 0) {
             document.getElementById('stockQty-' + productId).value = parsedQty;
             document.getElementById('stockForm-' + productId).submit();
         } else {
-            alert("正しい数値を入力してください。");
+            alert("正しい数値を入力してください（ゼロ以外）。");
         }
     }
 }
