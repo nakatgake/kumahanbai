@@ -515,6 +515,7 @@ async def create_customer(
     address: str = Form(""),
     website_url: str = Form(""),
     rank: str = Form("RETAIL"),
+    honorific: str = Form("御中"),
     is_agency: bool = Form(False),
     invoice_delivery_method: str = Form("POSTAL"),
     login_id: Optional[str] = Form(None),
@@ -529,6 +530,7 @@ async def create_customer(
         name=name, company=company, zip_code=zip_code, 
         email=email, phone=phone, address=address, website_url=website_url,
         rank=models.CustomerRank[rank],
+        honorific=honorific,
         is_agency=is_agency,
         invoice_delivery_method=invoice_delivery_method,
         login_id=login_id if is_agency and login_id else None,
@@ -568,6 +570,7 @@ async def update_customer(
     address: str = Form(""),
     website_url: str = Form(""),
     rank: str = Form("RETAIL"),
+    honorific: str = Form("御中"),
     is_agency: bool = Form(False),
     invoice_delivery_method: str = Form("POSTAL"),
     login_id: Optional[str] = Form(None),
@@ -588,6 +591,7 @@ async def update_customer(
         customer.address = address
         customer.website_url = website_url
         customer.rank = models.CustomerRank[rank]
+        customer.honorific = honorific
         customer.is_agency = is_agency
         customer.invoice_delivery_method = invoice_delivery_method
         customer.login_id = login_id if is_agency and login_id else None
