@@ -28,7 +28,11 @@
     <div class="card" style="padding: 1rem; border-left: 4px solid #f39c12; background: #fffdf8;">
         <div style="font-size: 0.8rem; color: #666; margin-bottom: 0.3rem;">自動締処理（本日分）</div>
         {% set auto_count = 0 %}
-        {% for inv in email_invoices + postal_invoices %}{% if '自動生成' in (inv.memo or '') %}{% set auto_count = auto_count + 1 %}{% endif %}{% endfor %}
+        {% for inv in email_invoices + postal_invoices %}
+            {% if inv.memo and '自動生成' in inv.memo %}
+                {% set auto_count = auto_count + 1 %}
+            {% endif %}
+        {% endfor %}
         <div style="font-size: 1.8rem; font-weight: bold; color: #2c3e50;">{{ auto_count }}<span style="font-size: 1rem; margin-left: 0.3rem;">件</span></div>
     </div>
 </div>
@@ -48,49 +52,61 @@
     
     {% if email_invoices %}
     <form action="/admin/invoice-dispatch/email" method="post" id="email-dispatch-form">
-                <div style="background: #f1f8ff; padding: 12px; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #d1e9ff; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                    <span style="font-weight: bold; font-size: 0.9rem; color: #0056b3;">締め日で一括選択:</span>
-                    <div style="display: flex; gap: 6px;">
-                        {% for day in [5, 10, 15, 20, 25, 31] %}
-                        <button type="button" class="btn-select-day" onclick="selectByDay('email', {{ day }})">{{ day if day != 31 else '末' }}日</button>
-                        {% endfor %}
-                    </div>
-                    <button type="button" style="margin-left: auto; background: #6c757d; color: white; border: none; padding: 4px 12px; border-radius: 4px; font-size: 0.8rem; cursor: pointer;" onclick="toggleAll('email', false)">選択解除</button>
-                </div>
+        <div style="background: #f1f8ff; padding: 12px; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #d1e9ff; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <span style="font-weight: bold; font-size: 0.9rem; color: #0056b3;">締め日で一括選択:</span>
+            <div style="display: flex; gap: 6px;">
+                {% for day in [5, 10, 15, 20, 25, 31] %}
+                <button type="button" class="btn-select-day" onclick="selectByDay('email', {{ day }})">
+                    {% if day == 31 %}末{% else %}{{ day }}{% endif %}日
+                </button>
+                {% endfor %}
+            </div>
+            <button type="button" style="margin-left: auto; background: #6c757d; color: white; border: none; padding: 4px 12px; border-radius: 4px; font-size: 0.8rem; cursor: pointer;" onclick="toggleAll('email', false)">選択解除</button>
+        </div>
 
-                <table style="margin-top: 1rem;">
-                    <thead>
-                        <tr>
-                            <th><input type="checkbox" id="check-all-email" onchange="toggleAll('email', this.checked)"></th>
-                            <th>請求書番号</th>
-                            <th>顧客名</th>
-                            <th style="text-align: center;">締め日</th>
-                            <th>メールアドレス</th>
-                            <th>請求額</th>
-                        </tr>
-                    </thead>
+        <table style="margin-top: 1rem;">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="check-all-email" onchange="toggleAll('email', this.checked)"></th>
+                    <th>請求書番号</th>
+                    <th>顧客名</th>
+                    <th style="text-align: center;">締め日</th>
+                    <th>メールアドレス</th>
+                    <th>請求額</th>
+                </tr>
+            </thead>
             <tbody>
                 {% for inv in email_invoices %}
                 {% set customer = inv.customer or (inv.orders[0].quotation.customer if inv.orders else None) %}
-                {% set is_auto = 'true' if '自動生成' in (inv.memo or '') else 'false' %}
+                {% set is_auto = 'true' if inv.memo and '自動生成' in inv.memo else 'false' %}
                 <tr>
                     <td><input type="checkbox" name="invoice_ids" value="{{ inv.id }}" class="check-email" data-closing-day="{{ customer.closing_day or 0 }}" data-is-auto="{{ is_auto }}"></td>
                     <td>{{ inv.invoice_number }}</td>
                     <td>
-                        <div style="font-weight: bold;">{{ customer.company if customer.company else customer.name if customer else '---' }}</div>
-                        {% if '自動生成' in inv.memo %}<span style="font-size: 0.75rem; background: #e8f5e9; color: #2e7d32; padding: 2px 6px; border-radius: 4px;">🔄 システム自動締処理分</span>{% endif %}
+                        <div style="font-weight: bold;">
+                            {% if customer %}
+                                {% if customer.company %}{{ customer.company }}{% else %}{{ customer.name }}{% endif %}
+                            {% else %}
+                                ---
+                            {% endif %}
+                        </div>
+                        {% if inv.memo and '自動生成' in inv.memo %}
+                            <span style="font-size: 0.75rem; background: #e8f5e9; color: #2e7d32; padding: 2px 6px; border-radius: 4px;">🔄 システム自動締処理分</span>
+                        {% endif %}
                     </td>
                     <td style="text-align: center;">
                         {% if customer and customer.closing_day %}
                             <span style="background: #e1f5fe; color: #0277bd; padding: 4px 10px; border-radius: 20px; font-weight: bold; font-size: 0.85rem;">
-                                {{ customer.closing_day if customer.closing_day != 31 else '末' }}日
+                                {% if customer.closing_day == 31 %}末{% else %}{{ customer.closing_day }}{% endif %}日
                             </span>
                         {% else %}
                             <span style="color: #999;">---</span>
                         {% endif %}
                     </td>
-                    <td>{{ customer.email if customer and customer.email else '' }}</td>
-                    <td style="font-weight: bold; color: #2c3e50;">¥{{ "{:,.0f}".format(inv.total_amount) if inv.total_amount is not none else "0" }}</td>
+                    <td>{% if customer %}{{ customer.email or '' }}{% endif %}</td>
+                    <td style="font-weight: bold; color: #2c3e50;">
+                        ¥{% if inv.total_amount %}{{ "{:,.0f}".format(inv.total_amount) }}{% else %}0{% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -110,55 +126,66 @@
     
     {% if postal_invoices %}
     <form action="/invoices/bulk-print" method="get" target="_blank">
-                <div style="background: #f1fff3; padding: 12px; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #c8e6c9; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                    <span style="font-weight: bold; font-size: 0.9rem; color: #2e7d32;">締め日で一括選択:</span>
-                    <div style="display: flex; gap: 6px;">
-                        {% for day in [5, 10, 15, 20, 25, 31] %}
-                        <button type="button" class="btn-select-day btn-select-day-postal" onclick="selectByDay('postal', {{ day }})">{{ day if day != 31 else '末' }}日</button>
-                        {% endfor %}
-                    </div>
-                    <button type="button" style="margin-left: auto; background: #6c757d; color: white; border: none; padding: 4px 12px; border-radius: 4px; font-size: 0.8rem; cursor: pointer;" onclick="toggleAll('postal', false)">選択解除</button>
-                </div>
+        <div style="background: #f1fff3; padding: 12px; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #c8e6c9; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <span style="font-weight: bold; font-size: 0.9rem; color: #2e7d32;">締め日で一括選択:</span>
+            <div style="display: flex; gap: 6px;">
+                {% for day in [5, 10, 15, 20, 25, 31] %}
+                <button type="button" class="btn-select-day btn-select-day-postal" onclick="selectByDay('postal', {{ day }})">
+                    {% if day == 31 %}末{% else %}{{ day }}{% endif %}日
+                </button>
+                {% endfor %}
+            </div>
+            <button type="button" style="margin-left: auto; background: #6c757d; color: white; border: none; padding: 4px 12px; border-radius: 4px; font-size: 0.8rem; cursor: pointer;" onclick="toggleAll('postal', false)">選択解除</button>
+        </div>
 
-                <table style="margin-top: 1rem;">
-                    <thead>
-                        <tr>
-                            <th><input type="checkbox" id="check-all-postal" onchange="toggleAll('postal', this.checked)"></th>
-                            <th>請求書番号</th>
-                            <th>顧客名</th>
-                            <th style="text-align: center;">締め日</th>
-                            <th>住所</th>
-                            <th>請求額</th>
-                        </tr>
-                    </thead>
+        <table style="margin-top: 1rem;">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="check-all-postal" onchange="toggleAll('postal', this.checked)"></th>
+                    <th>請求書番号</th>
+                    <th>顧客名</th>
+                    <th style="text-align: center;">締め日</th>
+                    <th>住所</th>
+                    <th>請求額</th>
+                </tr>
+            </thead>
             <tbody>
                 {% for inv in postal_invoices %}
                 {% set customer = inv.customer or (inv.orders[0].quotation.customer if inv.orders else None) %}
-                {% set is_auto = 'true' if '自動生成' in (inv.memo or '') else 'false' %}
+                {% set is_auto = 'true' if inv.memo and '自動生成' in inv.memo else 'false' %}
                 <tr>
                     <td><input type="checkbox" name="invoice_ids" value="{{ inv.id }}" class="check-postal" data-closing-day="{{ customer.closing_day or 0 }}" data-is-auto="{{ is_auto }}"></td>
                     <td>{{ inv.invoice_number }}</td>
                     <td>
-                        <div style="font-weight: bold;">{{ customer.company if customer.company else customer.name if customer else '---' }}</div>
-                        {% if '自動生成' in inv.memo %}<span style="font-size: 0.75rem; background: #e8f5e9; color: #2e7d32; padding: 2px 6px; border-radius: 4px;">🔄 システム自動締処理分</span>{% endif %}
+                        <div style="font-weight: bold;">
+                            {% if customer %}
+                                {% if customer.company %}{{ customer.company }}{% else %}{{ customer.name }}{% endif %}
+                            {% else %}
+                                ---
+                            {% endif %}
+                        </div>
+                        {% if inv.memo and '自動生成' in inv.memo %}
+                            <span style="font-size: 0.75rem; background: #e8f5e9; color: #2e7d32; padding: 2px 6px; border-radius: 4px;">🔄 システム自動締処理分</span>
+                        {% endif %}
                     </td>
                     <td style="text-align: center;">
                         {% if customer and customer.closing_day %}
                             <span style="background: #e8f5e9; color: #2e7d32; padding: 4px 10px; border-radius: 20px; font-weight: bold; font-size: 0.85rem;">
-                                {{ customer.closing_day if customer.closing_day != 31 else '末' }}日
+                                {% if customer.closing_day == 31 %}末{% else %}{{ customer.closing_day }}{% endif %}日
                             </span>
                         {% else %}
                             <span style="color: #999;">---</span>
                         {% endif %}
                     </td>
-                    <td>{{ customer.address if customer and customer.address else '' }}</td>
-                    <td style="font-weight: bold; color: #2c3e50;">¥{{ "{:,.0f}".format(inv.total_amount) if inv.total_amount is not none else "0" }}</td>
+                    <td>{% if customer %}{{ customer.address or '' }}{% endif %}</td>
+                    <td style="font-weight: bold; color: #2c3e50;">
+                        ¥{% if inv.total_amount %}{{ "{:,.0f}".format(inv.total_amount) }}{% else %}0{% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         <div style="margin-top: 1rem; text-align: right;">
-            <!-- action is bulk-print which expects invoice_ids as query params. Since it's GET, form submission handles this -->
             <button type="submit" class="btn btn-success">🖨️ 選択した請求書を一括印刷する (A4)</button>
         </div>
     </form>
@@ -168,28 +195,6 @@
 </div>
 
 <style>
-    .badge-closing {
-        display: inline-block;
-        padding: 4px 12px;
-        border-radius: 50px;
-        font-size: 0.85rem;
-        font-weight: 700;
-        text-align: center;
-        min-width: 60px;
-    }
-    .badge-email-type { background-color: #e1f5fe; color: #0277bd; }
-    .badge-postal-type { background-color: #e8f5e9; color: #2e7d32; }
-    .badge-auto {
-        display: inline-block;
-        font-size: 0.75rem;
-        background: #fff3e0;
-        color: #e65100;
-        padding: 2px 8px;
-        border-radius: 4px;
-        border: 1px solid #ffeb3b;
-        margin-top: 4px;
-        font-weight: bold;
-    }
     .btn-select-day {
         background: white; border: 1px solid #3498db; color: #3498db;
         padding: 4px 12px; border-radius: 4px; font-size: 0.85rem; font-weight: bold; cursor: pointer; transition: 0.2s;
@@ -217,7 +222,6 @@ function selectByDay(type, day) {
         const rowDay = parseInt(cb.getAttribute('data-closing-day'));
         const isAuto = cb.getAttribute('data-is-auto') === 'true';
         
-        // 指定された締め日と一致、かつ自動生成分（即時発行以外）をチェック
         if (rowDay === day && isAuto) {
             cb.checked = true;
             count++;
@@ -226,7 +230,6 @@ function selectByDay(type, day) {
         }
     });
     
-    // マスターチェックボックスの状態を更新
     document.getElementById('check-all-' + type).checked = false;
     
     if (count === 0) {
