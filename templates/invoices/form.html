@@ -21,7 +21,8 @@
 
         <div class="form-group">
             <label>顧客名</label>
-            <input type="text" value="{{ invoice.order.quotation.customer.company }}" disabled>
+            {% set customer = invoice.customer if invoice.customer else (invoice.orders[0].quotation.customer if invoice.orders else None) %}
+            <input type="text" value="{{ customer.company or customer.name if customer else '' }}" disabled>
         </div>
 
         <div style="background: #f9f9f9; padding: 1rem; border-radius: 8px; border: 1px solid #eee; margin-bottom: 1.5rem;">
@@ -38,7 +39,15 @@
             </div>
 
             <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem;">
-                {% set original_subtotal = invoice.order.quotation.items|sum(attribute='subtotal') if invoice.order.quotation else 0 %}
+                {% set stats = namespace(subtotal=0) %}
+                {% if invoice.orders %}
+                    {% for order in invoice.orders %}
+                        {% if order.quotation %}
+                            {% set stats.subtotal = stats.subtotal + (order.quotation.items|sum(attribute='subtotal')|float) %}
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+                {% set original_subtotal = stats.subtotal %}
                 <div id="subtotal-sum-display" style="color: #666;">小計合計: ¥{{ "{:,.0f}".format(original_subtotal) }}</div>
                 <div id="discount-amount-display" style="color: #e74c3c; display: {{ 'block' if invoice.discount_rate > 0 else 'none' }};">
                     値引き: -¥{{ "{:,.0f}".format(original_subtotal * (invoice.discount_rate / 100)) }}
