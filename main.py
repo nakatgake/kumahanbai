@@ -219,6 +219,36 @@ def migrate_db():
         print("Migrating orders: adding invoice_id column...")
         cursor.execute("ALTER TABLE orders ADD COLUMN invoice_id INTEGER")
     
+    # --- 既存データの自動移行（旧1対1の請求書データ対応） ---
+    try:
+        cursor.execute("PRAGMA table_info(invoices)")
+        inv_cols = [row[1] for row in cursor.fetchall()]
+        if 'order_id' in inv_cols:
+            print("Running data migration for legacy invoices...")
+            # 旧請求書のorder_idを元に、受注側のinvoice_idに紐づける
+            cursor.execute("""
+                UPDATE orders 
+                SET invoice_id = (
+                    SELECT id FROM invoices WHERE invoices.order_id = orders.id
+                )
+                WHERE invoice_id IS NULL AND EXISTS (
+                    SELECT 1 FROM invoices WHERE invoices.order_id = orders.id
+                )
+            """)
+            # 旧請求書に不足しているcustomer_idを、紐づく受注先から引っ張って設定する
+            cursor.execute("""
+                UPDATE invoices
+                SET customer_id = (
+                    SELECT q.customer_id 
+                    FROM orders o
+                    JOIN quotations q ON o.quotation_id = q.id
+                    WHERE o.id = invoices.order_id
+                )
+                WHERE customer_id IS NULL AND order_id IS NOT NULL
+            """)
+    except Exception as e:
+        print(f"Data migration warning: {e}")
+
     conn.commit()
     conn.close()
 
