@@ -1935,7 +1935,7 @@ async def admin_bulk_print_invoices(
 
 @app.post("/invoices/bulk_print")
 async def bulk_print_invoices_post(request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
-    """一括印刷用レイアウトを表示 (POST) - 下位互換用"""
+    """一括印刷用レイアウトを表示 (POST) - PRGパターンでGETにリダイレクト"""
     form_data = await request.form()
     # 複数のキー形式に対応
     raw_ids = form_data.getlist("invoice_ids") or form_data.getlist("invoice_ids[]")
@@ -1944,20 +1944,9 @@ async def bulk_print_invoices_post(request: Request, db: Session = Depends(get_d
     if not invoice_ids:
         return RedirectResponse(url="/invoices", status_code=303)
     
-    invoices = db.query(models.Invoice).filter(
-        models.Invoice.id.in_(invoice_ids)
-    ).all()
-    
-    for inv in invoices:
-        if inv.status == models.InvoiceStatus.UNPAID:
-            inv.status = models.InvoiceStatus.ISSUED
-    db.commit()
-    
-    return templates.TemplateResponse(request=request, name="invoices/bulk_print.html", context={
-        "request": request,
-        "invoices": invoices,
-        "user": user
-    })
+    # POST→Redirect→GET パターンで、ブラウザキャッシュ問題を防ぐ
+    ids_param = "&".join([f"invoice_ids={i}" for i in invoice_ids])
+    return RedirectResponse(url=f"/invoices/bulk-print?{ids_param}", status_code=303)
 
 
 @app.post("/orders/{order_id}/invoice")
@@ -4014,6 +4003,78 @@ async def fix_inventory_magic(db: Session = Depends(get_db)):
         
     db.commit()
     return "<h1>処理完了</h1><p>すべての在庫が本社に集約され、指定の在庫数に上書きされました。</p><a href='/products'>商品台帳へ戻る</a>"
+
+
+# --- 管理者専用: 未入金請求書の一括リセット ---
+@app.get("/admin/cleanup-unpaid-invoices", response_class=HTMLResponse)
+async def cleanup_unpaid_invoices_page(
+    request: Request,
+    user: models.User = Depends(get_active_user)
+):
+    return HTMLResponse("""
+    <html><body style="font-family:sans-serif;padding:2rem;">
+    <h2>🔧 未入金請求書 一括リセット</h2>
+    <p style="color:#e74c3c;font-weight:bold;">⚠️ この操作は取り消せません。テストデータとして登録された全請求書を削除し、紐付いた受注を未請求状態に戻します。</p>
+    <form method="post" action="/admin/cleanup-unpaid-invoices" onsubmit="return confirm('本当に実行しますか？');">
+        <button type="submit" style="background:#e74c3c;color:white;padding:1rem 2rem;font-size:1.1rem;border:none;border-radius:8px;cursor:pointer;">
+            🗑️ 全未入金請求書を削除してリセットする
+        </button>
+    </form>
+    </body></html>
+    """)
+
+@app.post("/admin/cleanup-unpaid-invoices", response_class=HTMLResponse)
+async def cleanup_unpaid_invoices_execute(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    results = []
+    try:
+        unpaid = db.query(models.Invoice).filter(models.Invoice.status == models.InvoiceStatus.UNPAID).all()
+        results.append(f"対象請求書: {len(unpaid)}件")
+        for inv in unpaid:
+            results.append(f"  - {inv.invoice_number} を削除中...")
+            a_orders = db.query(models.AgencyOrder).filter(models.AgencyOrder.invoice_id == inv.id).all()
+            for ao in a_orders:
+                ao.invoice_id = None
+            orders = db.query(models.Order).filter(models.Order.invoice_id == inv.id).all()
+            for o in orders:
+                if any(o.order_number.startswith(p) for p in ['ORD-INV-', 'ORD-AGINV-', 'ORD-SHADOW-']):
+                    q = o.quotation
+                    db.delete(o)
+                    if q:
+                        db.delete(q)
+                else:
+                    o.invoice_id = None
+            db.delete(inv)
+        shadows = db.query(models.Order).filter(models.Order.order_number.like("ORD-SHADOW-%")).all()
+        for s in shadows:
+            q = s.quotation
+            db.delete(s)
+            if q:
+                db.delete(q)
+        db.commit()
+        results.append("✅ 完了しました！")
+        result_html = "<br>".join(results)
+        return HTMLResponse(f"""
+        <html><body style="font-family:sans-serif;padding:2rem;">
+        <h2>✅ リセット完了</h2>
+        <pre style="background:#f5f5f5;padding:1rem;border-radius:8px;">{result_html}</pre>
+        <a href="/admin/invoice-dispatch" style="display:inline-block;margin-top:1rem;background:#2ecc71;color:white;padding:0.8rem 1.5rem;border-radius:8px;text-decoration:none;">
+            → 一括発行画面へ戻る
+        </a>
+        </body></html>
+        """)
+    except Exception as e:
+        db.rollback()
+        return HTMLResponse(f"""
+        <html><body style="font-family:sans-serif;padding:2rem;">
+        <h2 style="color:red;">❌ エラー</h2>
+        <pre>{str(e)}</pre>
+        <a href="/admin/cleanup-unpaid-invoices">← 戻る</a>
+        </body></html>
+        """, status_code=500)
 
 if __name__ == "__main__":
     import uvicorn
