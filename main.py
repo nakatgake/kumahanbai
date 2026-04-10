@@ -4040,19 +4040,25 @@ async def cleanup_unpaid_invoices_execute(
         results.append(f"対象請求書: {len(unpaid)}件")
         for inv in unpaid:
             results.append(f"  - {inv.invoice_number} を削除中...")
-            # agency_ordersのinvoice_idカラムが存在する場合のみ紐付け解除
+            # agency_ordersのinvoice_idカラムが存在する場合のみ紐付け解除し、ステータスを未処理に戻す
             if has_agency_invoice_col:
-                db.execute(text("UPDATE agency_orders SET invoice_id = NULL WHERE invoice_id = :inv_id"), {"inv_id": inv.id})
+                db.execute(text("UPDATE agency_orders SET invoice_id = NULL, status = '未処理' WHERE invoice_id = :inv_id"), {"inv_id": inv.id})
+            
             orders = db.query(models.Order).filter(models.Order.invoice_id == inv.id).all()
             for o in orders:
+                # テスト用/自動生成用の特殊な受注番号は物理削除
                 if any(o.order_number.startswith(p) for p in ['ORD-INV-', 'ORD-AGINV-', 'ORD-SHADOW-']):
                     q = o.quotation
                     db.delete(o)
                     if q:
                         db.delete(q)
                 else:
+                    # 通常の受注は紐付けを解除し、ステータスを「未出荷」に戻して自動生成を止める
                     o.invoice_id = None
+                    o.status = models.OrderStatus.PENDING
             db.delete(inv)
+        
+        # 不要な残存シャドウ受注も掃除
         shadows = db.query(models.Order).filter(models.Order.order_number.like("ORD-SHADOW-%")).all()
         for s in shadows:
             q = s.quotation
