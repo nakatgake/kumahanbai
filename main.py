@@ -4031,17 +4031,18 @@ async def cleanup_unpaid_invoices_execute(
 ):
     results = []
     try:
+        # agency_orders に invoice_id カラムが存在するか事前チェック（旧スキーマ対応）
+        from sqlalchemy import text
+        col_check = db.execute(text("PRAGMA table_info(agency_orders)")).fetchall()
+        has_agency_invoice_col = any(row[1] == "invoice_id" for row in col_check)
+
         unpaid = db.query(models.Invoice).filter(models.Invoice.status == models.InvoiceStatus.UNPAID).all()
         results.append(f"対象請求書: {len(unpaid)}件")
         for inv in unpaid:
             results.append(f"  - {inv.invoice_number} を削除中...")
-            # agency_ordersのinvoice_idカラムが存在しない旧スキーマでも動作するよう例外処理
-            try:
-                a_orders = db.query(models.AgencyOrder).filter(models.AgencyOrder.invoice_id == inv.id).all()
-                for ao in a_orders:
-                    ao.invoice_id = None
-            except Exception:
-                pass  # カラムが存在しない場合はスキップ
+            # agency_ordersのinvoice_idカラムが存在する場合のみ紐付け解除
+            if has_agency_invoice_col:
+                db.execute(text("UPDATE agency_orders SET invoice_id = NULL WHERE invoice_id = :inv_id"), {"inv_id": inv.id})
             orders = db.query(models.Order).filter(models.Order.invoice_id == inv.id).all()
             for o in orders:
                 if any(o.order_number.startswith(p) for p in ['ORD-INV-', 'ORD-AGINV-', 'ORD-SHADOW-']):
