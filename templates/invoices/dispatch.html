@@ -70,6 +70,8 @@
                         </tr>
                     </thead>
             <tbody>
+                {% for inv in email_invoices %}
+                {% set customer = inv.customer or (inv.orders[0].quotation.customer if inv.orders else None) %}
                 {% set is_auto = 'true' if '自動生成' in (inv.memo or '') else 'false' %}
                 <tr>
                     <td><input type="checkbox" name="invoice_ids" value="{{ inv.id }}" class="check-email" data-closing-day="{{ customer.closing_day or 0 }}" data-is-auto="{{ is_auto }}"></td>
@@ -130,6 +132,8 @@
                         </tr>
                     </thead>
             <tbody>
+                {% for inv in postal_invoices %}
+                {% set customer = inv.customer or (inv.orders[0].quotation.customer if inv.orders else None) %}
                 {% set is_auto = 'true' if '自動生成' in (inv.memo or '') else 'false' %}
                 <tr>
                     <td><input type="checkbox" name="invoice_ids" value="{{ inv.id }}" class="check-postal" data-closing-day="{{ customer.closing_day or 0 }}" data-is-auto="{{ is_auto }}"></td>
