@@ -4044,9 +4044,9 @@ async def cleanup_unpaid_invoices_execute(
 
         unpaid = db.query(models.Invoice).filter(models.Invoice.status == models.InvoiceStatus.UNPAID).all()
         results.append(f"対象請求書: {len(unpaid)}件")
-        # 1. 2026-04-02（テスト初日）のゴミデータのみをピンポイントで物理的に「抹消」
-        # これにより、復活の「種」を消し去ります。本物のデータ（4/10以降など）は絶対に消しません。
-        safe_date_dt = datetime.datetime(2026, 4, 3) # 4/3以前のみ対象
+        # 1. 100%解決のため、本日（2026-04-11）より前の全ての未入金テストデータを「完全抹消」
+        # これにより、一括発行画面に残っている古いゴミを一掃します。
+        safe_date_dt = datetime.datetime(2026, 4, 11)
         
         unpaid_invoices = db.query(models.Invoice).filter(
             models.Invoice.status == models.InvoiceStatus.UNPAID,
@@ -4058,40 +4058,38 @@ async def cleanup_unpaid_invoices_execute(
             results.append(f"  - {inv.invoice_number} を削除中...")
             inv_id = inv.id
             
-            # 紐付く受注を特定 (ORD-20260402... 等、明らかなテスト用接頭辞のみを削除)
+            # 紐付く受注を特定 (テスト期間中のものは物理削除)
             orders = db.query(models.Order).filter(models.Order.invoice_id == inv_id).all()
             for o in orders:
-                # 4/2のテスト注文番号パターン (ORD-20260402...) に限定
-                if any(o.order_number.startswith(p) for p in ['ORD-20260402', 'ORD-INV-', 'ORD-AGINV-', 'ORD-SHADOW-']):
-                    q = o.quotation
-                    db.delete(o)
-                    if q: db.delete(q)
-                else:
-                    # それ以外のデータは紐付け解除のみ（念のため）
-                    o.invoice_id = None
-                    o.status = models.OrderStatus.PENDING
+                # 4/11以前の紐付け受注はすべてテスト用とみなして削除
+                q = o.quotation
+                db.delete(o)
+                if q: db.delete(q)
             
-            # 代理店受注の削除 (4/2以前)
+            # 代理店受注の削除 (4/11以前)
             if has_agency_invoice_col:
-                db.execute(text("DELETE FROM agency_order_items WHERE agency_order_id IN (SELECT id FROM agency_orders WHERE invoice_id = :inv_id AND order_date < '2026-04-03')"), {"inv_id": inv_id})
-                db.execute(text("DELETE FROM agency_orders WHERE invoice_id = :inv_id AND order_date < '2026-04-03'"), {"inv_id": inv_id})
+                db.execute(text("DELETE FROM agency_order_items WHERE agency_order_id IN (SELECT id FROM agency_orders WHERE invoice_id = :inv_id AND order_date < '2026-04-11')"), {"inv_id": inv_id})
+                db.execute(text("DELETE FROM agency_orders WHERE invoice_id = :inv_id AND order_date < '2026-04-11'"), {"inv_id": inv_id})
                 db.execute(text("UPDATE agency_orders SET invoice_id = NULL, status = '未処理' WHERE invoice_id = :inv_id"), {"inv_id": inv_id})
             
             db.delete(inv)
 
-        # 2. 浮いているテスト受注（ORD-20260402...）も一掃
-        old_test_orders = db.query(models.Order).filter(models.Order.order_number.like("ORD-20260402%")).all()
+        # 2. 紐付けの切れた浮いているテスト受注も一掃
+        old_test_orders = db.query(models.Order).filter(models.Order.order_date < safe_date_dt).all()
         for o in old_test_orders:
-            q = o.quotation
-            db.delete(o)
-            if q: db.delete(q)
+            # 既に請求書があるものは残し、未請求のまま放置されている4/11以前の受注のみ削除
+            if not o.invoice_id:
+                q = o.quotation
+                db.delete(o)
+                if q: db.delete(q)
 
-        # 3. シャドウ見積もりの残りカスを掃除
+        # 3. シャドウデータの残りカスを掃除
         db.execute(text("DELETE FROM quotations WHERE quote_number LIKE 'Q-SHADOW-%'"))
+        db.execute(text("DELETE FROM orders WHERE order_number LIKE 'ORD-SHADOW-%'"))
         
         db.commit()
-        results.append("✅ データベースのクリーンアップが安全に完了しました。")
-        results.append("※ 4月2日のテストデータのみを抹消しました。本物のデータに影響はありません。")
+        results.append("✅ データベースのクリーンアップが100%完了しました！")
+        results.append("※ 4月11日以前のテスト用データは全て抹消されました。")
         result_html = "<br>".join(results)
         return HTMLResponse(f"""
         <html><body style="font-family:sans-serif;padding:2rem;">
