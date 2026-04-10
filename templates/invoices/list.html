@@ -54,7 +54,8 @@
                                 {{ invoice.invoice_number }}
                             </a>
                         </td>
-                        <td>{{ invoice.customer.company or invoice.customer.name }}</td>
+                        {% set customer = invoice.customer if invoice.customer else (invoice.orders[0].quotation.customer if invoice.orders else None) %}
+                        <td>{{ customer.company or customer.name if customer else '' }}</td>
                         <td>{{ invoice.due_date.strftime('%Y/%m/%d') }}</td>
                         <td>¥{{ "{:,.0f}".format((invoice.total_amount * 1.1)|int) }}</td>
                         <td>
