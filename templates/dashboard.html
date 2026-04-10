@@ -13,6 +13,32 @@
     </form>
 </div>
 
+<!-- 自動締処理・発送待ちのアラート表示 -->
+<div style="margin-bottom: 2rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+    <div class="card" style="border-left: 6px solid #f39c12; background: #fffcf5; display: flex; align-items: center; gap: 1rem; padding: 1.5rem;">
+        <div style="font-size: 2.5rem;">🤖</div>
+        <div>
+            <div style="color: #856404; font-size: 0.9rem; font-weight: bold; margin-bottom: 0.2rem;">本日の自動集計（締め日対応）</div>
+            <div style="font-size: 1.6rem; font-weight: bold; color: #333;">
+                {{ stats.auto_closed_today }} <span style="font-size: 0.9rem; color: #666;">件の請求書を作成しました</span>
+            </div>
+            <div style="font-size: 0.8rem; color: #999; margin-top: 0.3rem;">※ {{ now.strftime('%H:%M') if now else '' }} 時時点の集計結果</div>
+        </div>
+    </div>
+    <div class="card" style="border-left: 6px solid #3498db; background: #f0f7ff; display: flex; align-items: center; gap: 1rem; padding: 1.5rem;">
+        <div style="font-size: 2.5rem;">📩</div>
+        <div>
+            <div style="color: #004085; font-size: 0.9rem; font-weight: bold; margin-bottom: 0.2rem;">発送待ちの請求書</div>
+            <div style="font-size: 1.6rem; font-weight: bold; color: #333;">
+                {{ stats.dispatch_pending }} <span style="font-size: 0.9rem; color: #666;">件が未発行です</span>
+            </div>
+            <div style="margin-top: 0.5rem;">
+                <a href="/admin/invoice-dispatch" class="btn btn-sm btn-primary" style="text-decoration: none; padding: 0.2rem 1rem;">一括発行画面へ</a>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="stats-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem;">
     <div class="card stat-card">
         <h3>顧客数</h3>

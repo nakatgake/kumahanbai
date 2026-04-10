@@ -29,14 +29,6 @@ except ImportError:
     print("Warning: APScheduler or date-util not found. Automated billing is disabled.")
     HAS_SCHEDULER = False
 
-try:
-    from apscheduler.schedulers.background import BackgroundScheduler
-    from utils.date_utils import is_closing_day, calculate_payment_date, next_business_day, get_next_closing_date
-    HAS_SCHEDULER = True
-except ImportError:
-    print("Warning: APScheduler or date-util not found. Automated billing is disabled.")
-    HAS_SCHEDULER = False
-
 from email.message import EmailMessage
 from utils.email import send_notification
 
@@ -505,14 +497,37 @@ async def dashboard(
         q_orders = q_orders.filter(models.Order.order_date < ed)
         q_invoices = q_invoices.filter(models.Invoice.issue_date < ed)
 
+    # 請求関連サマリー（ダッシュボード用）
+    try:
+        # 発送待ち件数（未発送の請求書）
+        dispatch_pending = db.query(models.Invoice).filter(models.Invoice.delivery_status == "UNSENT").count()
+        
+        # 本日の自動締処理分
+        today_start = datetime.datetime.combine(datetime.date.today(), datetime.time.min)
+        auto_count = db.query(models.Invoice).filter(
+            models.Invoice.issue_date >= today_start,
+            models.Invoice.memo.like("%自動生成%")
+        ).count()
+        
+        paid_total = q_invoices.filter(models.Invoice.status == models.InvoiceStatus.PAID).with_entities(func.sum(models.Invoice.total_amount)).scalar() or 0
+        unpaid_total = q_invoices.filter(models.Invoice.status == models.InvoiceStatus.UNPAID).with_entities(func.sum(models.Invoice.total_amount)).scalar() or 0
+    except Exception as stats_err:
+        print(f"Error calculating dashboard stats: {stats_err}")
+        dispatch_pending = 0
+        auto_count = 0
+        paid_total = 0
+        unpaid_total = 0
+
     stats = {
         "customers": q_customers.count(),
         "products": q_products.count(),
         "quotations": q_quotes.count(),
         "orders": q_orders.count(),
         "invoices": q_invoices.count(),
-        "total_sales": q_invoices.filter(models.Invoice.status == models.InvoiceStatus.PAID).with_entities(func.sum(models.Invoice.total_amount)).scalar() or 0,
-        "unpaid_total": q_invoices.filter(models.Invoice.status == models.InvoiceStatus.UNPAID).with_entities(func.sum(models.Invoice.total_amount)).scalar() or 0
+        "total_sales": paid_total,
+        "unpaid_total": unpaid_total,
+        "dispatch_pending": dispatch_pending,
+        "auto_closed_today": auto_count
     }
 
     return templates.TemplateResponse(request=request, name="dashboard.html", context={
@@ -521,7 +536,8 @@ async def dashboard(
         "stats": stats,
         "start_date": start_date,
         "end_date": end_date,
-        "user": user
+        "user": user,
+        "now": datetime.datetime.now()
     })
 # --- Customers ---
 @app.get("/customers", response_class=HTMLResponse)
@@ -3797,10 +3813,6 @@ async def mark_notification_read_post(
         db.commit()
     return RedirectResponse(url="/admin/notifications", status_code=303)
 
-        generated_count += 1
-    
-    db.commit()
-    return RedirectResponse(url=f"/invoices?success_gen={generated_count}", status_code=303)
 
 # --- System Settings (Admin) ---
 @app.get("/admin/settings", response_class=HTMLResponse)
