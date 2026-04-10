@@ -2049,17 +2049,17 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
     from fpdf import FPDF
     import io
     import logging
+    import os
 
     try:
-        import os
-        # 日本語フォント設定
-        # Xserver(Linux)とWindowsの両方に対応するためのフォントパス候補
+        # カラー設定 (#1a2a6c)
+        primary_color = (26, 42, 108)
+        
+        # フォントパス候補
         font_paths = [
-            "static/fonts/NotoSansJP-Regular.otf", # 成功したダウンロード
-            "static/fonts/IPAexGothic.ttf", 
-            "C:\\Windows\\Fonts\\msgothic.ttc", # Windows
-            "/usr/share/fonts/truetype/noto/NotoSansJP-Regular.otf", # Linux (Noto)
-            "/usr/share/fonts/google-noto/NotoSansJP-Regular.otf" # AlmaLinux
+            "static/fonts/NotoSansJP-Regular.otf",
+            "static/fonts/IPAexGothic.ttf",
+            "C:\\Windows\\Fonts\\msgothic.ttc"
         ]
         
         pdf = FPDF()
@@ -2069,7 +2069,6 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
         for path in font_paths:
             if os.path.exists(path):
                 try:
-                    # 日本語フォントの名前を登録
                     pdf.add_font("Japanese", "", path)
                     pdf.set_font("Japanese", size=10)
                     font_found = True
@@ -2079,77 +2078,190 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
                     continue
         
         if not font_found:
-            # フォントがない場合は標準フォントを使うが、日本語は表示できない
             pdf.set_font("helvetica", size=10)
 
-        # ヘッダー
-        pdf.set_font("Japanese" if font_found else "helvetica", "", 16)
-        pdf.cell(0, 10, "御 申 込 兼 請 求 書", ln=True, align="C")
-        pdf.ln(5)
+        # --- ヘッダー領域 ---
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 24)
+        pdf.set_text_color(*primary_color)
+        pdf.cell(100, 15, "請  求  書", ln=False)
+        
+        # タイトルの下線
+        pdf.set_draw_color(*primary_color)
+        pdf.set_line_width(0.8)
+        pdf.line(10, 24, 60, 24)
+        
+        # 右側：書類情報
+        pdf.set_text_color(51, 51, 51)
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 9)
+        pdf.set_xy(140, 10)
+        pdf.cell(0, 5, f"No: {invoice.invoice_number}", ln=True, align="R")
+        pdf.cell(0, 5, f"発行日: {invoice.issue_date.strftime('%Y年%m月%d日') if invoice.issue_date else ''}", ln=True, align="R")
+        if invoice.due_date:
+            pdf.cell(0, 5, f"お支払い期限: {invoice.due_date.strftime('%Y年%m月%d日')}", ln=True, align="R")
+        
+        pdf.ln(10)
 
-        pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
+        # --- 宛先と発行元 ---
+        customer = invoice.customer if invoice.customer else (invoice.orders[0].quotation.customer if invoice.orders else None)
         
         # 左側：宛先
-        customer = invoice.customer if invoice.customer else (invoice.orders[0].quotation.customer if invoice.orders else None)
-        customer_name = (customer.company or customer.name) if customer else "御中"
-        pdf.cell(100, 6, f"{customer_name}  {customer.honorific if customer else '御中'}", ln=False)
+        pdf.set_xy(10, 35)
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
+        if customer and customer.zip_code:
+            pdf.cell(0, 5, f"〒{customer.zip_code}", ln=True)
+        if customer and customer.address:
+            pdf.cell(0, 5, f"{customer.address}", ln=True)
         
-        # 右側：請求情報
-        pdf.cell(0, 6, f"請求番号: {invoice.invoice_number}", ln=True, align="R")
-        pdf.cell(100, 6, "", ln=False)
-        pdf.cell(0, 6, f"発行日: {invoice.issue_date.strftime('%Y/%m/%d') if invoice.issue_date else ''}", ln=True, align="R")
-        pdf.cell(100, 6, "", ln=False)
-        pdf.cell(0, 6, f"お支払期限: {invoice.due_date.strftime('%Y/%m/%d') if invoice.due_date else ''}", ln=True, align="R")
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 15)
+        customer_name = (customer.company or customer.name) if customer else "御中"
+        honorific = (customer.honorific or "御中") if customer else "御中"
+        pdf.cell(100, 10, f"{customer_name}  {honorific}", ln=True)
+        pdf.set_line_width(0.2)
+        pdf.line(10, pdf.get_y(), 100, pdf.get_y())
+        
+        # 右側：発行元
+        issuer_x = 130
+        pdf.set_xy(issuer_x, 35)
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 12)
+        pdf.set_text_color(*primary_color)
+        pdf.cell(0, 7, "株式会社熊ノ護化研", ln=True, align="L")
+        
+        pdf.set_text_color(51, 51, 51)
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 9)
+        pdf.set_x(issuer_x)
+        pdf.cell(0, 5, "代表取締役社長　岡泰造", ln=True)
+        pdf.set_x(issuer_x)
+        pdf.cell(0, 5, "〒010-0001 秋田県秋田市中通3-1-9", ln=True)
+        pdf.set_x(issuer_x)
+        pdf.cell(0, 5, "TEL: 018-838-1920", ln=True)
+        pdf.set_x(issuer_x)
+        pdf.cell(0, 5, "Mail: info@kumanomorikaken.co.jp", ln=True)
+        pdf.set_x(issuer_x)
+        pdf.cell(0, 5, "登録番号: T5410001014110", ln=True)
+        
+        # 電子印影の配置
+        if os.path.exists("static/images/seal.png"):
+            pdf.image("static/images/seal.png", x=issuer_x + 40, y=40, w=20)
+
         pdf.ln(10)
 
-        # 合計金額
-        pdf.set_font("Japanese" if font_found else "helvetica", "", 14)
-        grand_total = int(invoice.total_amount * 1.1)
-        pdf.cell(0, 10, f"ご請求金額（税込）:  ¥{grand_total:,.0f} -", border="B", ln=True)
-        pdf.ln(5)
-
-        # 明細テーブル
-        pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
-        pdf.cell(90, 8, "品名 / 摘要", border=1, align="C")
-        pdf.cell(25, 8, "数量", border=1, align="C")
-        pdf.cell(35, 8, "単価", border=1, align="C")
-        pdf.cell(40, 8, "小計", border=1, align="C", ln=True)
-
-        pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
+        # --- 御請求金額ボックス ---
+        current_y = pdf.get_y()
+        pdf.set_fill_color(248, 249, 250)
+        pdf.set_draw_color(*primary_color)
+        pdf.set_line_width(0.5)
+        pdf.rect(10, current_y, 190, 15, style="DF")
         
-        # 明細行のループ
+        pdf.set_xy(15, current_y + 4)
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
+        pdf.cell(50, 7, "御請求金額（税込）", ln=False)
+        
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 20)
+        pdf.set_text_color(*primary_color)
+        grand_total = int(invoice.total_amount * 1.1)
+        pdf.cell(125, 7, f"¥{grand_total:,.0f} -", ln=True, align="R")
+        
+        pdf.set_text_color(51, 51, 51)
+        pdf.ln(8)
+
+        # --- 明細テーブル ---
+        pdf.set_fill_color(*primary_color)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 9)
+        
+        # テーブルヘッダー
+        pdf.cell(10, 8, "No", border=1, align="C", fill=True)
+        pdf.cell(90, 8, "品名 / 摘要", border=1, align="C", fill=True)
+        pdf.cell(20, 8, "数量", border=1, align="C", fill=True)
+        pdf.cell(35, 8, "単価（円）", border=1, align="C", fill=True)
+        pdf.cell(35, 8, "金額（円）", border=1, align="C", fill=True)
+        pdf.ln()
+
+        pdf.set_text_color(51, 51, 51)
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 9)
+        
+        row_idx = 1
         for order in invoice.orders:
+            # 受注区切り行
+            pdf.set_fill_color(240, 244, 248)
+            pdf.set_font("Japanese" if font_found else "helvetica", "", 8)
+            pdf.set_text_color(*primary_color)
+            pdf.cell(10, 6, "", border=1, fill=True)
+            pdf.cell(180, 6, f" 【受注日: {order.order_date.strftime('%Y/%m/%d')} ｜ No: {order.order_number}】", border=1, fill=True)
+            pdf.ln()
+            
+            pdf.set_text_color(51, 51, 51)
+            pdf.set_font("Japanese" if font_found else "helvetica", "", 9)
             if order.quotation:
                 for item in order.quotation.items:
+                    pdf.cell(10, 7, str(row_idx), border=1, align="C")
                     pdf.cell(90, 7, item.description, border=1)
-                    pdf.cell(25, 7, f"{item.quantity}", border=1, align="R")
-                    pdf.cell(35, 7, f"¥{item.unit_price:,.0f}", border=1, align="R")
-                    pdf.cell(40, 7, f"¥{item.subtotal:,.0f}", border=1, align="R", ln=True)
+                    pdf.cell(20, 7, f"{item.quantity}", border=1, align="R")
+                    pdf.cell(35, 7, f"{item.unit_price:,.0f}", border=1, align="R")
+                    pdf.cell(35, 7, f"{item.subtotal:,.0f}", border=1, align="R")
+                    pdf.ln()
+                    row_idx += 1
 
-        # 合計計算
-        pdf.ln(5)
-        pdf.cell(150, 6, "小計（税抜）", align="R")
-        pdf.cell(40, 6, f"¥{int(invoice.total_amount):,.0f}", align="R", ln=True)
-        pdf.cell(150, 6, "消費税（10%）", align="R")
-        pdf.cell(40, 6, f"¥{int(invoice.total_amount * 0.1):,.0f}", align="R", ln=True)
+        # 空行の埋め合わせ（最低10行程度）
+        while row_idx <= 8:
+            pdf.cell(10, 7, str(row_idx), border=1, align="C")
+            pdf.cell(90, 7, "", border=1)
+            pdf.cell(20, 7, "", border=1)
+            pdf.cell(35, 7, "", border=1)
+            pdf.cell(35, 7, "", border=1)
+            pdf.ln()
+            row_idx += 1
+
+        # --- 集計セクション ---
+        pdf.ln(2)
+        summary_x = 130
+        pdf.set_x(summary_x)
+        pdf.cell(35, 6, "小計（税抜）", border=0, align="R")
+        pdf.cell(35, 6, f"¥{int(invoice.total_amount):,.0f}", border=0, align="R", ln=True)
+        
+        pdf.set_x(summary_x)
+        pdf.cell(35, 6, "消費税（10%）", border=0, align="R")
+        pdf.cell(35, 6, f"¥{int(invoice.total_amount * 0.1):,.0f}", border=0, align="R", ln=True)
+        
+        pdf.set_draw_color(*primary_color)
+        pdf.line(summary_x + 5, pdf.get_y(), 200, pdf.get_y())
+        
+        pdf.set_x(summary_x)
         pdf.set_font("Japanese" if font_found else "helvetica", "", 11)
-        pdf.cell(150, 8, "合計（税込）", align="R")
-        pdf.cell(40, 8, f"¥{grand_total:,.0f}", align="R", ln=True)
+        pdf.set_text_color(*primary_color)
+        pdf.cell(35, 8, "合計（税込）", border=0, align="R")
+        pdf.cell(35, 8, f"¥{grand_total:,.0f}", border=0, align="R", ln=True)
 
-        # 自社情報
+        # --- お振込先 ---
         pdf.ln(10)
+        pdf.set_draw_color(221, 221, 221)
+        pdf.set_line_width(0.2)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(2)
+        
+        pdf.set_text_color(*primary_color)
         pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
-        pdf.cell(120, 5, "", ln=False)
-        pdf.cell(0, 5, "株式会社熊ノ護化研", ln=True)
-        pdf.cell(120, 5, "", ln=False)
-        pdf.cell(0, 5, "〒010-0001 秋田県秋田市中通3-1-9", ln=True)
-        pdf.cell(120, 5, "", ln=False)
-        pdf.cell(0, 5, "TEL: 018-838-1920", ln=True)
+        pdf.cell(30, 6, "【お振込先】", ln=False)
+        
+        pdf.set_text_color(51, 51, 51)
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 9)
+        bank_info = "秋田銀行　秋田駅前支店　普通口座　1090927\n株式会社熊ノ護化研　代表取締役社長　岡泰造"
+        pdf.multi_cell(0, 5, bank_info)
+        
+        pdf.set_line_width(0.5)
+        pdf.set_draw_color(*primary_color)
+        pdf.line(10, pdf.get_y() + 2, 200, pdf.get_y() + 2)
+
+        # --- 備考 ---
+        pdf.ln(5)
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 8)
+        pdf.set_text_color(102, 102, 102)
+        notes = "【備考】\n・振込手数料はお客様負担にてお願い申し上げます。\n・上記見積に基づき、ご請求申し上げます。\n・上記金額には消費税10%が含まれております。"
+        pdf.multi_cell(0, 4, notes)
 
         # バイト列として出力
         return pdf.output()
     except Exception as e:
-        # PDF生成に失敗しても本体をクラッシュさせない
         import traceback
         print(f"PDF生成エラー: {e}")
         print(traceback.format_exc())
