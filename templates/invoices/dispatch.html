@@ -41,11 +41,12 @@
             </thead>
             <tbody>
                 {% for inv in email_invoices %}
+                {% set customer = inv.customer or (inv.orders[0].quotation.customer if inv.orders else None) %}
                 <tr>
                     <td><input type="checkbox" name="invoice_ids" value="{{ inv.id }}" class="check-email" checked></td>
                     <td>{{ inv.invoice_number }}</td>
-                    <td>{{ inv.order.quotation.customer.company if inv.order.quotation.customer.company else inv.order.quotation.customer.name }}</td>
-                    <td>{{ inv.order.quotation.customer.email if inv.order.quotation.customer.email else '' }}</td>
+                    <td>{{ customer.company if customer.company else customer.name if customer else '---' }}</td>
+                    <td>{{ customer.email if customer and customer.email else '' }}</td>
                     <td>¥{{ "{:,.0f}".format(inv.total_amount) if inv.total_amount is not none else "0" }}</td>
                 </tr>
                 {% endfor %}
@@ -78,11 +79,12 @@
             </thead>
             <tbody>
                 {% for inv in postal_invoices %}
+                {% set customer = inv.customer or (inv.orders[0].quotation.customer if inv.orders else None) %}
                 <tr>
                     <td><input type="checkbox" name="invoice_ids" value="{{ inv.id }}" class="check-postal" checked></td>
                     <td>{{ inv.invoice_number }}</td>
-                    <td>{{ inv.order.quotation.customer.company if inv.order.quotation.customer.company else inv.order.quotation.customer.name }}</td>
-                    <td>{{ inv.order.quotation.customer.address if inv.order.quotation.customer.address else '' }}</td>
+                    <td>{{ customer.company if customer.company else customer.name if customer else '---' }}</td>
+                    <td>{{ customer.address if customer and customer.address else '' }}</td>
                     <td>¥{{ "{:,.0f}".format(inv.total_amount) if inv.total_amount is not none else "0" }}</td>
                 </tr>
                 {% endfor %}
