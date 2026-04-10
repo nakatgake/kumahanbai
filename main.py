@@ -1961,15 +1961,6 @@ async def create_invoice(order_id: int, db: Session = Depends(get_db), user: mod
     if not order or order.invoice:
         return RedirectResponse(url="/orders", status_code=303)
 
-    # 100%解決のため、本日（2026-04-11）より前の受注については、
-    # 完了操作をしても請求書の自動作成をスキップし、ステータス更新のみを行います。
-    # これにより、過去データの整理中に画面が汚れるのを完全に防ぎます。
-    safe_date = datetime.datetime(2026, 4, 11)
-    if order.order_date < safe_date:
-        order.status = models.OrderStatus.SHIPPED
-        db.commit()
-        return RedirectResponse(url="/orders", status_code=303)
-
     # Create Invoice
     invoice = models.Invoice(
         customer_id=order.quotation.customer_id,
