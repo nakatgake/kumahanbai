@@ -249,7 +249,7 @@
                 </div>
             </div>
 
-            {% set customer = doc.order.quotation.customer %}
+            {% set customer = doc.customer if doc.customer else (doc.orders[0].quotation.customer if doc.orders else None) %}
             <div class="main-flex">
                 <div class="recipient">
                     <div class="recipient-zip">
@@ -288,39 +288,48 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% set items = doc.order.quotation.items %}
-                    
-                    {% for i in range(1, 11) %}
-                        <tr>
-                            <td class="row-no">{{ i }}</td>
-                            {% if i <= items|length %}
-                                {% set item = items[i-1] %}
-                                <td class="row-desc">{{ item.description or (item.product.name if item.product else '') }}</td>
-                                <td class="row-qty">{{ item.quantity }}</td>
-                                <td class="row-price">{{ "{:,.0f}".format(item.unit_price) }}</td>
-                                <td class="row-subtotal">{{ "{:,.0f}".format(item.subtotal) }}</td>
-                            {% else %}
-                                <td class="row-desc"></td>
-                                <td class="row-qty"></td>
-                                <td class="row-price"></td>
-                                <td class="row-subtotal"></td>
-                            {% endif %}
+                    {# 合算請求書の場合のループ処理 #}
+                    {% set row_count = namespace(value=0) %}
+                    {% for order in doc.orders %}
+                        {# 注文ごとのヘッダー行 #}
+                        <tr style="background-color: #f0f4f8;">
+                            <td class="row-no"></td>
+                            <td colspan="4" style="font-weight: bold; font-size: 8pt; color: var(--primary);">
+                                【受注日: {{ order.order_date.strftime('%Y/%m/%d') }} ｜ No: {{ order.order_number }}】
+                            </td>
                         </tr>
+                        {% if order.quotation %}
+                            {% for item in order.quotation.items %}
+                                {% set row_count.value = row_count.value + 1 %}
+                                <tr>
+                                    <td class="row-no">{{ row_count.value }}</td>
+                                    <td class="row-desc">{{ item.product.name if item.product else item.description }}</td>
+                                    <td class="row-qty">{{ item.quantity }}</td>
+                                    <td class="row-price">{{ "{:,.0f}".format(item.unit_price) }}</td>
+                                    <td class="row-subtotal">{{ "{:,.0f}".format(item.subtotal) }}</td>
+                                </tr>
+                            {% endfor %}
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {# 空行の埋め合わせ (合計10行程度になるように調整) #}
+                    {% for j in range(row_count.value + 1, 11) %}
+                        <tr><td class="row-no"></td><td class="row-desc"></td><td class="row-qty"></td><td class="row-price"></td><td class="row-subtotal"></td></tr>
                     {% endfor %}
                 </tbody>
             </table>
 
             <div class="summary-wrapper">
                 <table class="summary-table">
-                    {% set original_subtotal = items|sum(attribute='subtotal') %}
+                    {% set original_subtotal = doc.total_amount %}
                     <tr>
                         <td class="summary-label">小計（税抜）</td>
-                        <td class="summary-value">{{ "¥{:,.0f}".format(original_subtotal) }}</td>
+                        <td class="summary-value">{{ "¥{:,.0f}".format(original_subtotal|int) }}</td>
                     </tr>
                     {% if doc.discount_rate|default(0) > 0 %}
                     <tr>
                         <td class="summary-label">値引き ({{ doc.discount_rate|default(0) }}%)</td>
-                        <td class="summary-value" style="color: #e74c3c;">-{{ "¥{:,.0f}".format(original_subtotal - doc.total_amount) }}</td>
+                        <td class="summary-value" style="color: #e74c3c;">-{{ "¥{:,.0f}".format((original_subtotal - doc.total_amount)|int) }}</td>
                     </tr>
                     {% endif %}
                     <tr>

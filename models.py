@@ -112,15 +112,16 @@ class Order(Base):
     discount_rate = Column(Float, default=0.0)
     is_bulk_discount = Column(Boolean, default=False)
     status = Column(Enum(OrderStatus), default=OrderStatus.PENDING)
+    invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True)
     memo = Column(String)
 
     quotation = relationship("Quotation", back_populates="order")
-    invoice = relationship("Invoice", back_populates="order", uselist=False, cascade="all, delete-orphan")
+    invoice = relationship("Invoice", back_populates="orders")
 
 class Invoice(Base):
     __tablename__ = "invoices"
     id = Column(Integer, primary_key=True, index=True)
-    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"))
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True)
     invoice_number = Column(String, unique=True)
     issue_date = Column(DateTime, default=datetime.datetime.utcnow)
     due_date = Column(DateTime)
@@ -128,9 +129,11 @@ class Invoice(Base):
     discount_rate = Column(Float, default=0.0)
     is_bulk_discount = Column(Boolean, default=False)
     status = Column(Enum(InvoiceStatus), default=InvoiceStatus.UNPAID)
+    delivery_status = Column(String, default="UNSENT") # UNSENT, SENT, MAILED
     memo = Column(String)
 
-    order = relationship("Order", back_populates="invoice")
+    orders = relationship("Order", back_populates="invoice")
+    customer = relationship("Customer")
 
 class AgencyOrder(Base):
     """代理店からの発注"""

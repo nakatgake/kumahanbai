@@ -203,6 +203,22 @@ def migrate_db():
         print("Migrating notifications: adding related_id column...")
         cursor.execute("ALTER TABLE notifications ADD COLUMN related_id INTEGER")
     
+    # Check if consolidated invoice columns exist (合算請求対応)
+    cursor.execute("PRAGMA table_info(invoices)")
+    cols = [row[1] for row in cursor.fetchall()]
+    if 'delivery_status' not in cols:
+        print("Migrating invoices: adding delivery_status column...")
+        cursor.execute("ALTER TABLE invoices ADD COLUMN delivery_status TEXT DEFAULT 'UNSENT'")
+    if 'customer_id' not in cols:
+        print("Migrating invoices: adding customer_id column...")
+        cursor.execute("ALTER TABLE invoices ADD COLUMN customer_id INTEGER")
+    
+    cursor.execute("PRAGMA table_info(orders)")
+    cols = [row[1] for row in cursor.fetchall()]
+    if 'invoice_id' not in cols:
+        print("Migrating orders: adding invoice_id column...")
+        cursor.execute("ALTER TABLE orders ADD COLUMN invoice_id INTEGER")
+    
     conn.commit()
     conn.close()
 
@@ -281,73 +297,72 @@ def closing_notification_job():
             
             if is_closing_day(today, cust.closing_day):
                 # この顧客の未請求（Invoiceがない）な受注を抽出
-                # 代理店発注ではなく、営業が作成したOrderを対象とする
                 orders = db.query(models.Order).join(models.Quotation).filter(
                     models.Quotation.customer_id == cust.id,
-                    models.Order.status == models.OrderStatus.PENDING, # 未出荷または出荷済みだが未請求
-                    models.Order.invoice == None
+                    models.Order.invoice_id == None
                 ).all()
                 
                 if not orders:
                     continue
                 
-                # 請求書を自動発行し、通知メールを送信
-                invoice_count = 0
-                total_amount = 0
-                order_numbers = []
+                # 請求書の合算発行処理
+                # 支払期限の計算
+                due_date = calculate_payment_date(today, cust.payment_term_months or 1, cust.payment_day or 31)
+                due_date = next_business_day(due_date)
                 
-                for order in orders:
-                    # 支払期限の計算
-                    # payment_term_months (0:当月, 1:翌月, 2:翌々月)
-                    # payment_day (1-31)
-                    due_date = calculate_payment_date(today, cust.payment_term_months or 1, cust.payment_day or 31)
-                    due_date = next_business_day(due_date)
-                    
-                    inv_num = order.order_number.replace("ORD-", "INV-")
-                    # 番号重複を避けるためのチェック
-                    existing = db.query(models.Invoice).filter_by(invoice_number=inv_num).first()
-                    if existing:
-                        inv_num = f"{inv_num}-AUTO-{today.strftime('%m%d')}"
+                # 合算請求書の作成
+                inv_num = f"INV-{today.strftime('%Y%m')}-{cust.id:04d}"
+                # 番号重複回避
+                existing = db.query(models.Invoice).filter_by(invoice_number=inv_num).first()
+                if existing:
+                    inv_num = f"{inv_num}-REV-{datetime.datetime.now().strftime('%H%M')}"
 
-                    invoice = models.Invoice(
-                        order_id=order.id,
-                        invoice_number=inv_num,
-                        issue_date=datetime.datetime.combine(today, datetime.time.min),
-                        due_date=datetime.datetime.combine(due_date, datetime.time.min),
-                        total_amount=order.total_amount,
-                        discount_rate=order.discount_rate,
-                        is_bulk_discount=order.is_bulk_discount,
-                        status=models.InvoiceStatus.UNPAID
-                    )
-                    db.add(invoice)
-                    invoice_count += 1
-                    total_amount += order.total_amount
+                invoice = models.Invoice(
+                    customer_id=cust.id,
+                    invoice_number=inv_num,
+                    issue_date=datetime.datetime.combine(today, datetime.time.min),
+                    due_date=datetime.datetime.combine(due_date, datetime.time.min),
+                    total_amount=int(sum(o.total_amount for o in orders)),
+                    status=models.InvoiceStatus.UNPAID,
+                    delivery_status="UNSENT",
+                    memo=f"{today.strftime('%m')}月分合算請求"
+                )
+                db.add(invoice)
+                db.flush()
+
+                # 各受注に請求書を紐付ける
+                order_numbers = []
+                for order in orders:
+                    order.invoice_id = invoice.id
                     order_numbers.append(order.order_number)
                 
                 db.commit()
                 
-                # 通知メール送信
-                if invoice_count > 0:
-                    subject = f"【自動通知】本日締め日：{cust.company} 様の請求処理が完了しました"
-                    body = f"""株式会社 熊野森科学研究所 担当者様
+                # 管理者への通知メール
+                # 管理者への通知メール
+                subject = f"【自動作成】本日締め日：{cust.company} 様の合算請求書を作成しました"
+                body = f"""株式会社 熊野森科学研究所 担当者様
 
 本日（{today.strftime('%Y/%m/%d')}）は、{cust.company} 様の締め日です。
-システムにより以下の請求書が自動発行されました。
+以下の通り、複数の受注を1枚にまとめた合算請求書を自動作成しました。
 
 ■ 顧客名：{cust.company}
-■ 発行件数：{invoice_count} 件
-■ 合計請求額：¥{'{:,.0f}'.format(total_amount)} (税込)
+■ 合算内容：{len(orders)} 件の受注を統合
+■ 合計請求額：¥{'{:,.0f}'.format(int(invoice.total_amount * 1.1))} (税込)
 ■ 対象受注番号：{', '.join(order_numbers)}
 
-詳細および印刷は受発注管理システムの「入金・請求」メニューよりご確認ください。
+【重要：確認のお願い】
+この請求書は「未送信」状態で作成されています。
+管理画面の「入金・請求」メニューより内容をプレビュー確認し、
+お客様の希望（{cust.invoice_delivery_method}）に合わせて、
+「メール送信」または「印刷・郵送」の操作を行ってください。
 """
-                    # システム設定から通知先を取得
-                    settings = db.query(models.SystemSetting).all()
-                    s_dict = {s.key: s.value for s in settings}
-                    target_email = s_dict.get("notification_email") or "info@kumanomorikaken.co.jp"
-                    
-                    send_notification(subject, body, to=[target_email])
-                    print(f"Closing notification sent for {cust.company} to {target_email}")
+                settings = db.query(models.SystemSetting).all()
+                s_dict = {s.key: s.value for s in settings}
+                target_email = s_dict.get("notification_email") or "info@kumanomorikaken.co.jp"
+                
+                send_notification(subject, body, to=[target_email])
+                print(f"Consolidated invoice notification created for {cust.company}")
                     
     except Exception as e:
         print(f"Error in closing_notification_job: {e}")
@@ -1715,7 +1730,7 @@ async def list_invoices(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
-    query = db.query(models.Invoice).join(models.Order).join(models.Quotation).join(models.Customer)
+    query = db.query(models.Invoice).outerjoin(models.Customer)
     if q:
         query = query.filter(
             (models.Invoice.invoice_number.contains(q)) |
@@ -1747,7 +1762,7 @@ async def export_invoices_excel(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
-    query = db.query(models.Invoice).join(models.Order).join(models.Quotation).join(models.Customer)
+    query = db.query(models.Invoice).outerjoin(models.Customer)
     if q:
         query = query.filter(
             (models.Invoice.invoice_number.contains(q)) |
@@ -1770,17 +1785,19 @@ async def export_invoices_excel(
     num_fmt = workbook.add_format({'num_format': '#,##0', 'border': 1})
     border_fmt = workbook.add_format({'border': 1})
 
-    headers = ["請求番号", "顧客名", "発行日", "支払期限", "請求金額(税抜)"]
+    headers = ["請求番号", "顧客名", "発行日", "支払期限", "請求金額(税抜)", "紐付く受注数"]
     for i, h in enumerate(headers):
         worksheet.write(0, i, h, header_fmt)
         worksheet.set_column(i, i, 20)
 
     for row, inv in enumerate(invoices, 1):
         worksheet.write(row, 0, inv.invoice_number, border_fmt)
-        worksheet.write(row, 1, inv.order.quotation.customer.company, border_fmt)
+        cust_name = inv.customer.company if inv.customer else (inv.orders[0].quotation.customer.company if inv.orders else "")
+        worksheet.write(row, 1, cust_name, border_fmt)
         worksheet.write(row, 2, inv.issue_date, date_fmt)
         worksheet.write(row, 3, inv.due_date, date_fmt)
-        worksheet.write(row, 4, inv.total_amount, num_fmt)
+        worksheet.write(row, 4, int(inv.total_amount), num_fmt)
+        worksheet.write(row, 5, len(inv.orders), border_fmt)
 
     workbook.close()
     output.seek(0)
@@ -1800,7 +1817,7 @@ async def create_invoice(order_id: int, db: Session = Depends(get_db), user: mod
 
     # Create Invoice
     invoice = models.Invoice(
-        order_id=order.id,
+        customer_id=order.quotation.customer_id,
         invoice_number=order.order_number.replace("ORD-", "INV-"),
         issue_date=order.order_date, # Default to order date
         due_date=datetime.datetime.combine(
@@ -1812,12 +1829,15 @@ async def create_invoice(order_id: int, db: Session = Depends(get_db), user: mod
             datetime.time.min
         ),
         total_amount=order.total_amount,
-        discount_rate=order.discount_rate,
-        is_bulk_discount=order.is_bulk_discount,
         status=models.InvoiceStatus.UNPAID,
+        delivery_status="UNSENT",
         memo=order.memo
     )
     db.add(invoice)
+    db.flush()
+    
+    # Link order to invoice
+    order.invoice_id = invoice.id
     
     # Update order status to SHIPPED (出荷済み)
     order.status = models.OrderStatus.SHIPPED
@@ -1830,9 +1850,14 @@ async def cancel_shipping(order_id: int, db: Session = Depends(get_db), user: mo
     if not order or order.status != models.OrderStatus.SHIPPED:
         return RedirectResponse(url="/orders", status_code=303)
     
-    # Delete associated invoice
-    if order.invoice:
-        db.delete(order.invoice)
+    # Unlink or delete associated invoice
+    invoice = order.invoice
+    if invoice:
+        order.invoice_id = None
+        db.flush()
+        # If no other orders are linked to this invoice, delete it
+        if not invoice.orders:
+            db.delete(invoice)
     
     # Revert status to PENDING (未出荷)
     order.status = models.OrderStatus.PENDING
@@ -1953,26 +1978,93 @@ async def update_invoice(
     db.commit()
     return RedirectResponse(url="/invoices", status_code=303)
 
+@app.get("/invoices/{id}")
+async def view_invoice(request: Request, id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    invoice = db.query(models.Invoice).get(id)
+    if not invoice:
+        return RedirectResponse(url="/invoices", status_code=303)
+    
+    return templates.TemplateResponse(request=request, name="invoices/detail.html", context={
+        "request": request,
+        "invoice": invoice,
+        "customer": invoice.customer,
+        "orders": invoice.orders
+    })
+
 @app.post("/invoices/delete/{invoice_id}")
 async def delete_invoice(invoice_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
     invoice = db.query(models.Invoice).get(invoice_id)
     if invoice:
-        # 請求書に紐づく受注の明細から在庫を戻す
-        order = invoice.order
-        if order and order.quotation:
-            for item in order.quotation.items:
-                if item.product_id:
-                    main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
-                    if main_loc:
-                        update_product_stock(db, item.product_id, main_loc.id, item.quantity, "INBOUND", "請求書削除による在庫戻し")
-        # 紐づく受注も削除（受注がなくなれば請求も不要）
-        if order:
-            db.delete(order)
+        # 紐づくすべての受注の在庫を戻し、紐付けを解除する
+        for order in invoice.orders:
+            if order.quotation:
+                for item in order.quotation.items:
+                    if item.product_id:
+                        main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
+                        if main_loc:
+                            update_product_stock(db, item.product_id, main_loc.id, item.quantity, "INBOUND", "請求書削除による在庫戻し")
+            order.invoice_id = None
+            order.status = models.OrderStatus.PENDING # 未出荷に戻す
+        
         db.delete(invoice)
         db.commit()
     response = RedirectResponse(url="/invoices", status_code=303)
     response.headers["HX-Refresh"] = "true"
     return response
+
+@app.post("/invoices/{id}/send_email")
+async def send_invoice_email(id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    invoice = db.query(models.Invoice).get(id)
+    if not invoice:
+        return RedirectResponse(url="/invoices", status_code=303)
+    
+    customer = invoice.customer
+    if not customer or not customer.email:
+        # メールアドレスがない場合はエラー
+        return RedirectResponse(url=f"/invoices/{id}?error=no_email", status_code=303)
+    
+    # メール送信ロジック（本来はここにPDF添付の処理を入れる）
+    subject = f"【請求書】株式会社 熊野森科学研究所より（請求番号：{invoice.invoice_number}）"
+    body = f"""{customer.company or customer.name}
+{customer.honorific or '御中'}
+
+いつも大変お世話になっております。
+株式会社 熊野森科学研究所でございます。
+
+今月分（合算）の請求書をお送りさせていただきます。
+詳細は添付のPDFまたは以下のリンクよりご確認ください。
+
+■ 請求番号：{invoice.invoice_number}
+■ 御請求金額（税込）：¥{'{:,.0f}'.format(int(invoice.total_amount * 1.1))}-
+■ お支払期限：{invoice.due_date.strftime('%Y/%m/%d')}
+
+[振込先情報]
+〇〇銀行 〇〇支店
+普通 1234567 
+株式会社 熊野森科学研究所
+
+※ 本メールはシステムより送信されています。
+"""
+    # 実際にはここに send_notification(..., attachment=pdf) を追加
+    send_notification(subject, body, to=[customer.email])
+    
+    # ステータス更新
+    invoice.delivery_status = "SENT"
+    if invoice.status == models.InvoiceStatus.UNPAID:
+        invoice.status = models.InvoiceStatus.ISSUED
+    db.commit()
+    
+    return RedirectResponse(url=f"/invoices/{id}", status_code=303)
+
+@app.post("/invoices/{id}/mark_mailed")
+async def mark_mailed(id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    invoice = db.query(models.Invoice).get(id)
+    if invoice:
+        invoice.delivery_status = "MAILED"
+        if invoice.status == models.InvoiceStatus.UNPAID:
+            invoice.status = models.InvoiceStatus.ISSUED
+        db.commit()
+    return RedirectResponse(url=f"/invoices/{id}", status_code=303)
 
 @app.get("/invoices/{invoice_id}/print", response_class=HTMLResponse)
 async def print_invoice(request: Request, invoice_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):

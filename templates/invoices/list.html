@@ -40,7 +40,8 @@
                         <th>顧客名</th>
                         <th>支払期限</th>
                         <th>請求金額</th>
-                        <th>ステータス</th>
+                        <th>送付</th>
+                        <th>入金</th>
                         <th>操作</th>
                     </tr>
                 </thead>
@@ -48,10 +49,23 @@
                     {% for invoice in invoices %}
                     <tr id="row-{{ invoice.id }}">
                         <td style="text-align: center;"><input type="checkbox" name="invoice_ids[]" value="{{ invoice.id }}" class="invoice-checkbox"></td>
-                        <td>{{ invoice.invoice_number }}</td>
-                        <td>{{ invoice.order.quotation.customer.company }}</td>
+                        <td>
+                            <a href="/invoices/{{ invoice.id }}" style="font-weight: bold; text-decoration: none; color: #1a2a6c;">
+                                {{ invoice.invoice_number }}
+                            </a>
+                        </td>
+                        <td>{{ invoice.customer.company or invoice.customer.name }}</td>
                         <td>{{ invoice.due_date.strftime('%Y/%m/%d') }}</td>
-                        <td>¥{{ "{:,.0f}".format(invoice.total_amount) }}</td>
+                        <td>¥{{ "{:,.0f}".format((invoice.total_amount * 1.1)|int) }}</td>
+                        <td>
+                            {% if invoice.delivery_status == 'SENT' %}
+                                <span style="background: #e8f5e9; color: #2e7d32; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem;">送信済(Mail)</span>
+                            {% elif invoice.delivery_status == 'MAILED' %}
+                                <span style="background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem;">送付済(郵送)</span>
+                            {% else %}
+                                <span style="background: #fff3e0; color: #ef6c00; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem;">未送付</span>
+                            {% endif %}
+                        </td>
                         <td>
                             <select
                                 name="status_{{ invoice.id }}"
@@ -66,15 +80,14 @@
                                 {% else %}background: #f5f5f5; color: #666;{% endif %}"
                                 onchange="updateRowStyle(this)"
                             >
-                                <option value="UNPAID" {% if invoice.status.name == 'UNPAID' %}selected{% endif %}>未発行</option>
-                                <option value="ISSUED" {% if invoice.status.name == 'ISSUED' %}selected{% endif %}>発行済</option>
+                                <option value="UNPAID" {% if invoice.status.name == 'UNPAID' %}selected{% endif %}>未入金</option>
                                 <option value="PAID"   {% if invoice.status.name == 'PAID'   %}selected{% endif %}>入金済</option>
                             </select>
                             <span id="status-badge-{{ invoice.id }}" style="display: none;"></span>
                         </td>
                         <td style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                            <a href="/invoices/{{ invoice.id }}/print" class="btn btn-sm btn-info" target="_blank">🖨️</a>
-                            <a href="/invoices/edit/{{ invoice.id }}" class="btn btn-sm btn-warning">編集</a>
+                            <a href="/invoices/{{ invoice.id }}" class="btn btn-sm btn-info">詳細/送付</a>
+                            <a href="/invoices/edit/{{ invoice.id }}" class="btn btn-sm btn-warning">修正</a>
                         </td>
                     </tr>
                     {% else %}
