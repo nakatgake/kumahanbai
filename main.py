@@ -1980,6 +1980,7 @@ async def update_invoice(
     total_amount: float = Form(...),
     due_date: str = Form(...),
     status: str = Form(...),
+    delivery_status: str = Form("UNSENT"),
     discount_rate: float = Form(0.0),
     is_bulk_discount: bool = Form(False),
     memo: str = Form(""),
@@ -2001,6 +2002,7 @@ async def update_invoice(
     except ValueError:
         pass
     invoice.status = models.InvoiceStatus(status)
+    invoice.delivery_status = delivery_status
     invoice.discount_rate = discount_rate
     invoice.is_bulk_discount = is_bulk_discount
     invoice.memo = memo

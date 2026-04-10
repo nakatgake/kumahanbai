@@ -98,6 +98,15 @@
         </div>
 
         <div class="form-group" style="margin-bottom: 1.5rem;">
+            <label>送付ステータス</label>
+            <select name="delivery_status" class="form-control" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">
+                <option value="UNSENT" {% if invoice.delivery_status == 'UNSENT' %}selected{% endif %}>未送付</option>
+                <option value="SENT" {% if invoice.delivery_status == 'SENT' %}selected{% endif %}>送付済(メール)</option>
+                <option value="MAILED" {% if invoice.delivery_status == 'MAILED' %}selected{% endif %}>送付済(郵送)</option>
+            </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 1.5rem;">
             <label>メモ</label>
             <textarea name="memo" rows="2" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;">{{ invoice.memo if invoice else '' }}</textarea>
         </div>
