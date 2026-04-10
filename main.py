@@ -1839,6 +1839,60 @@ async def export_invoices_excel(
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
+@app.get("/invoices/bulk-print", response_class=HTMLResponse)
+async def admin_bulk_print_invoices(
+    request: Request,
+    invoice_ids: list[int] = Query(...),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    """一括印刷用レイアウトを表示 (GET)"""
+    invoices = db.query(models.Invoice).filter(
+        models.Invoice.id.in_(invoice_ids)
+    ).all()
+    
+    if not invoices:
+        return RedirectResponse(url="/admin/invoice-dispatch", status_code=303)
+    
+    # 印刷対象を「発行済」に更新
+    for inv in invoices:
+        if inv.status == models.InvoiceStatus.UNPAID:
+            inv.status = models.InvoiceStatus.ISSUED
+    db.commit()
+    
+    return templates.TemplateResponse(request=request, name="invoices/bulk_print.html", context={
+        "request": request,
+        "invoices": invoices,
+        "user": user
+    })
+
+@app.post("/invoices/bulk_print")
+async def bulk_print_invoices_post(request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    """一括印刷用レイアウトを表示 (POST) - 下位互換用"""
+    form_data = await request.form()
+    # 複数のキー形式に対応
+    raw_ids = form_data.getlist("invoice_ids") or form_data.getlist("invoice_ids[]")
+    invoice_ids = [int(i) for i in raw_ids if i]
+    
+    if not invoice_ids:
+        return RedirectResponse(url="/invoices", status_code=303)
+    
+    invoices = db.query(models.Invoice).filter(
+        models.Invoice.id.in_(invoice_ids)
+    ).all()
+    
+    for inv in invoices:
+        if inv.status == models.InvoiceStatus.UNPAID:
+            inv.status = models.InvoiceStatus.ISSUED
+    db.commit()
+    
+    return templates.TemplateResponse(request=request, name="invoices/bulk_print.html", context={
+        "request": request,
+        "invoices": invoices,
+        "user": user
+    })
+
+
 @app.post("/orders/{order_id}/invoice")
 async def create_invoice(order_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
     order = db.query(models.Order).get(order_id)
@@ -1937,32 +1991,7 @@ async def set_invoice_status(
     from fastapi.responses import Response
     return Response(status_code=204)
 
-@app.post("/invoices/bulk_print")
-async def bulk_print_invoices(request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
-    form_data = await request.form()
-    invoice_ids = form_data.getlist("invoice_ids[]")
-    if not invoice_ids:
-        return RedirectResponse(url="/invoices", status_code=303)
-    
-    # 印刷対象は「未発行」のみ（請求書発行済・入金済はスキップ）
-    invoices = db.query(models.Invoice).filter(
-        models.Invoice.id.in_(invoice_ids),
-        models.Invoice.status == models.InvoiceStatus.UNPAID
-    ).all()
-    
-    if not invoices:
-        return RedirectResponse(url="/invoices", status_code=303)
-    
-    # 印刷した分を「請求書発行済」に自動変更
-    for inv in invoices:
-        inv.status = models.InvoiceStatus.ISSUED
-    db.commit()
-    
-    return templates.TemplateResponse(request=request, name="invoices/bulk_print.html", context={
-        "request": request,
-        "invoices": invoices,
-        "user": user
-    })
+
 
 @app.get("/invoices/edit/{invoice_id}", response_class=HTMLResponse)
 async def edit_invoice(invoice_id: int, request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
@@ -3625,32 +3654,7 @@ async def dispatch_invoices_email(
             
     return RedirectResponse(url=f"/admin/invoice-dispatch?success={success_count}", status_code=303)
     
-@app.get("/invoices/bulk-print", response_class=HTMLResponse)
-async def admin_bulk_print_invoices(
-    request: Request,
-    invoice_ids: list[int] = Query(...),
-    db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
-):
-    # 印刷対象の請求書を取得
-    invoices = db.query(models.Invoice).filter(
-        models.Invoice.id.in_(invoice_ids)
-    ).all()
-    
-    if not invoices:
-        return RedirectResponse(url="/admin/invoice-dispatch", status_code=303)
-    
-    # 印刷した分を「請求書発行済」に自動変更
-    for inv in invoices:
-        if inv.status == models.InvoiceStatus.UNPAID:
-            inv.status = models.InvoiceStatus.ISSUED
-    db.commit()
-    
-    return templates.TemplateResponse(request=request, name="invoices/bulk_print.html", context={
-        "request": request,
-        "invoices": invoices,
-        "user": user
-    })
+
 
 @app.get("/notifications/{notification_id}/read")
 async def read_notification(
