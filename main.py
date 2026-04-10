@@ -2045,102 +2045,115 @@ async def delete_invoice(invoice_id: int, db: Session = Depends(get_db), user: m
     return response
 
 def generate_invoice_pdf_content(invoice: models.Invoice):
-    """請求書のPDFデータを生成してバイト列で返す"""
+    """請求書のPDFデータを生成してバイト列で返す。エラー時はNoneを返す"""
     from fpdf import FPDF
     import io
+    import logging
 
-    # 日本語フォント設定
-    # Xserver(Linux)とWindowsの両方に対応するためのフォントパス候補
-    font_paths = [
-        "C:\\Windows\\Fonts\\msgothic.ttc", # Windows
-        "/usr/share/fonts/truetype/noto/NotoSansJP-Regular.otf", # Linux (Noto)
-        "/usr/share/fonts/fonts-japanese-gothic.ttf", 
-        "static/fonts/IPAexGothic.ttf" # プロジェクト内
-    ]
-    
-    pdf = FPDF()
-    pdf.add_page()
-    
-    font_found = False
-    for path in font_paths:
-        if os.path.exists(path):
-            try:
-                pdf.add_font("Japanese", "", path)
-                pdf.set_font("Japanese", size=10)
-                font_found = True
-                break
-            except:
-                continue
-    
-    if not font_found:
-        pdf.set_font("helvetica", size=10)
+    try:
+        import os
+        # 日本語フォント設定
+        # Xserver(Linux)とWindowsの両方に対応するためのフォントパス候補
+        font_paths = [
+            "static/fonts/NotoSansJP-Regular.otf", # 成功したダウンロード
+            "static/fonts/IPAexGothic.ttf", 
+            "C:\\Windows\\Fonts\\msgothic.ttc", # Windows
+            "/usr/share/fonts/truetype/noto/NotoSansJP-Regular.otf", # Linux (Noto)
+            "/usr/share/fonts/google-noto/NotoSansJP-Regular.otf" # AlmaLinux
+        ]
+        
+        pdf = FPDF()
+        pdf.add_page()
+        
+        font_found = False
+        for path in font_paths:
+            if os.path.exists(path):
+                try:
+                    # 日本語フォントの名前を登録
+                    pdf.add_font("Japanese", "", path)
+                    pdf.set_font("Japanese", size=10)
+                    font_found = True
+                    break
+                except Exception as e:
+                    print(f"Font load error ({path}): {e}")
+                    continue
+        
+        if not font_found:
+            # フォントがない場合は標準フォントを使うが、日本語は表示できない
+            pdf.set_font("helvetica", size=10)
 
-    # ヘッダー
-    pdf.set_font("Japanese" if font_found else "helvetica", "", 16)
-    pdf.cell(0, 10, "御 申 込 兼 請 求 書", ln=True, align="C")
-    pdf.ln(5)
+        # ヘッダー
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 16)
+        pdf.cell(0, 10, "御 申 込 兼 請 求 書", ln=True, align="C")
+        pdf.ln(5)
 
-    pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
-    
-    # 左側：宛先
-    customer = invoice.customer if invoice.customer else (invoice.orders[0].quotation.customer if invoice.orders else None)
-    customer_name = (customer.company or customer.name) if customer else "御中"
-    pdf.cell(100, 6, f"{customer_name}  {customer.honorific if customer else '御中'}", ln=False)
-    
-    # 右側：請求情報
-    pdf.cell(0, 6, f"請求番号: {invoice.invoice_number}", ln=True, align="R")
-    pdf.cell(100, 6, "", ln=False)
-    pdf.cell(0, 6, f"発行日: {invoice.issue_date.strftime('%Y/%m/%d') if invoice.issue_date else ''}", ln=True, align="R")
-    pdf.cell(100, 6, "", ln=False)
-    pdf.cell(0, 6, f"お支払期限: {invoice.due_date.strftime('%Y/%m/%d') if invoice.due_date else ''}", ln=True, align="R")
-    pdf.ln(10)
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
+        
+        # 左側：宛先
+        customer = invoice.customer if invoice.customer else (invoice.orders[0].quotation.customer if invoice.orders else None)
+        customer_name = (customer.company or customer.name) if customer else "御中"
+        pdf.cell(100, 6, f"{customer_name}  {customer.honorific if customer else '御中'}", ln=False)
+        
+        # 右側：請求情報
+        pdf.cell(0, 6, f"請求番号: {invoice.invoice_number}", ln=True, align="R")
+        pdf.cell(100, 6, "", ln=False)
+        pdf.cell(0, 6, f"発行日: {invoice.issue_date.strftime('%Y/%m/%d') if invoice.issue_date else ''}", ln=True, align="R")
+        pdf.cell(100, 6, "", ln=False)
+        pdf.cell(0, 6, f"お支払期限: {invoice.due_date.strftime('%Y/%m/%d') if invoice.due_date else ''}", ln=True, align="R")
+        pdf.ln(10)
 
-    # 合計金額
-    pdf.set_font("Japanese" if font_found else "helvetica", "", 14)
-    grand_total = int(invoice.total_amount * 1.1)
-    pdf.cell(0, 10, f"ご請求金額（税込）:  ¥{grand_total:,.0f} -", border="B", ln=True)
-    pdf.ln(5)
+        # 合計金額
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 14)
+        grand_total = int(invoice.total_amount * 1.1)
+        pdf.cell(0, 10, f"ご請求金額（税込）:  ¥{grand_total:,.0f} -", border="B", ln=True)
+        pdf.ln(5)
 
-    # 明細テーブル
-    pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
-    pdf.cell(90, 8, "品名 / 摘要", border=1, align="C")
-    pdf.cell(25, 8, "数量", border=1, align="C")
-    pdf.cell(35, 8, "単価", border=1, align="C")
-    pdf.cell(40, 8, "小計", border=1, align="C", ln=True)
+        # 明細テーブル
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
+        pdf.cell(90, 8, "品名 / 摘要", border=1, align="C")
+        pdf.cell(25, 8, "数量", border=1, align="C")
+        pdf.cell(35, 8, "単価", border=1, align="C")
+        pdf.cell(40, 8, "小計", border=1, align="C", ln=True)
 
-    pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
-    
-    # 明細行のループ
-    for order in invoice.orders:
-        if order.quotation:
-            for item in order.quotation.items:
-                pdf.cell(90, 7, item.description, border=1)
-                pdf.cell(25, 7, f"{item.quantity}", border=1, align="R")
-                pdf.cell(35, 7, f"¥{item.unit_price:,.0f}", border=1, align="R")
-                pdf.cell(40, 7, f"¥{item.subtotal:,.0f}", border=1, align="R", ln=True)
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
+        
+        # 明細行のループ
+        for order in invoice.orders:
+            if order.quotation:
+                for item in order.quotation.items:
+                    pdf.cell(90, 7, item.description, border=1)
+                    pdf.cell(25, 7, f"{item.quantity}", border=1, align="R")
+                    pdf.cell(35, 7, f"¥{item.unit_price:,.0f}", border=1, align="R")
+                    pdf.cell(40, 7, f"¥{item.subtotal:,.0f}", border=1, align="R", ln=True)
 
-    # 合計計算
-    pdf.ln(5)
-    pdf.cell(150, 6, "小計（税抜）", align="R")
-    pdf.cell(40, 6, f"¥{int(invoice.total_amount):,.0f}", align="R", ln=True)
-    pdf.cell(150, 6, "消費税（10%）", align="R")
-    pdf.cell(40, 6, f"¥{int(invoice.total_amount * 0.1):,.0f}", align="R", ln=True)
-    pdf.set_font("Japanese" if font_found else "helvetica", "", 11)
-    pdf.cell(150, 8, "合計（税込）", align="R")
-    pdf.cell(40, 8, f"¥{grand_total:,.0f}", align="R", ln=True)
+        # 合計計算
+        pdf.ln(5)
+        pdf.cell(150, 6, "小計（税抜）", align="R")
+        pdf.cell(40, 6, f"¥{int(invoice.total_amount):,.0f}", align="R", ln=True)
+        pdf.cell(150, 6, "消費税（10%）", align="R")
+        pdf.cell(40, 6, f"¥{int(invoice.total_amount * 0.1):,.0f}", align="R", ln=True)
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 11)
+        pdf.cell(150, 8, "合計（税込）", align="R")
+        pdf.cell(40, 8, f"¥{grand_total:,.0f}", align="R", ln=True)
 
-    # 自社情報
-    pdf.ln(10)
-    pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
-    pdf.cell(120, 5, "", ln=False)
-    pdf.cell(0, 5, "株式会社熊ノ護化研", ln=True)
-    pdf.cell(120, 5, "", ln=False)
-    pdf.cell(0, 5, "〒010-0001 秋田県秋田市中通3-1-9", ln=True)
-    pdf.cell(120, 5, "", ln=False)
-    pdf.cell(0, 5, "TEL: 018-838-1920", ln=True)
+        # 自社情報
+        pdf.ln(10)
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
+        pdf.cell(120, 5, "", ln=False)
+        pdf.cell(0, 5, "株式会社熊ノ護化研", ln=True)
+        pdf.cell(120, 5, "", ln=False)
+        pdf.cell(0, 5, "〒010-0001 秋田県秋田市中通3-1-9", ln=True)
+        pdf.cell(120, 5, "", ln=False)
+        pdf.cell(0, 5, "TEL: 018-838-1920", ln=True)
 
-    # バイト列として出力
-    return pdf.output()
+        # バイト列として出力
+        return pdf.output()
+    except Exception as e:
+        # PDF生成に失敗しても本体をクラッシュさせない
+        import traceback
+        print(f"PDF生成エラー: {e}")
+        print(traceback.format_exc())
+        return None
 
 @app.post("/invoices/{id}/send_email")
 async def send_invoice_email(id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
