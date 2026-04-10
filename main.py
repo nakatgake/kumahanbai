@@ -439,9 +439,8 @@ def closing_notification_job():
                     s_dict = {s.key: s.value for s in settings}
                     target_email = s_dict.get("notification_email") or "info@kumanomorikaken.co.jp"
                     
-                    # メール送信ロジック (簡易実装 - 既存のsend_emailルーチンがあれば再利用)
-                    # ここでは一旦ログ出力に留めるか、既存のメール送信機能があれば呼び出す
-                    print(f"DEBUG: Admin Email should be sent to {target_email} about {cust.id}")
+                    # 管理者へメール通知を実行
+                    send_admin_email_sync(db, subject, body)
                 except Exception as email_err:
                     print(f"WARNING: Email notification failed: {str(email_err)}")
 
@@ -2642,20 +2641,9 @@ async def init_admin(db: Session = Depends(get_db)):
 
 
 async def send_order_notification_email(order: models.AgencyOrder, db: Session):
-    try:
-        settings = db.query(models.SystemSetting).all()
-        s = {s.key: s.value for s in settings}
-        
-        # 宛先: 設定がなければ info@kumanomorikaken.co.jp に送る
-        target = s.get("notification_email") or "info@kumanomorikaken.co.jp"
-        
-        if not s.get("smtp_host"):
-            print("Email notification skipped: no SMTP host configured")
-            return
-
-        msg = EmailMessage()
-        company_name = order.customer.company if order.customer else "不明な代理店"
-        content = f"""代理店：{company_name} 様より新規発注がありました。
+    subject = f"【代理店サイト】新規発注のお知らせ ({order.customer.company if order.customer else '不明な代理店'}様)"
+    company_name = order.customer.company if order.customer else "不明な代理店"
+    content = f"""代理店：{company_name} 様より新規発注がありました。
 
 【受注番号】: {order.order_number}
 【発注日時】: {order.order_date.strftime('%Y/%m/%d %H:%M') if order.order_date else '-'}
@@ -2664,12 +2652,25 @@ async def send_order_notification_email(order: models.AgencyOrder, db: Session):
 詳細は管理画面の「代理店発注」ページ、または以下の通知一覧よりご確認ください。
 https://app.kumanomorikaken.co.jp/admin/notifications
 """
+    send_admin_email_sync(db, subject, content)
+
+def send_admin_email_sync(db: Session, subject: str, content: str):
+    """管理者へメール通知を送信（同期版）"""
+    try:
+        settings = db.query(models.SystemSetting).all()
+        s = {s.key: s.value for s in settings}
+        target = s.get("notification_email") or "info@kumanomorikaken.co.jp"
+        
+        if not s.get("smtp_host"):
+            print(f"DEBUG: Email notification skipped (No SMTP): {subject}")
+            return
+
+        msg = EmailMessage()
         msg.set_content(content)
-        msg['Subject'] = f"【代理店サイト】新規発注のお知らせ ({company_name}様)"
+        msg['Subject'] = subject
         msg['From'] = s.get("smtp_from")
         msg['To'] = target
 
-        # SMTP configuration
         smtp_host = s.get("smtp_host")
         smtp_port_val = s.get("smtp_port") or "587"
         try:
@@ -2680,10 +2681,9 @@ https://app.kumanomorikaken.co.jp/admin/notifications
         smtp_user = s.get("smtp_user")
         smtp_pass = s.get("smtp_pass")
 
-        # SMTP Connection
+        import ssl
         context = ssl.create_default_context()
         if smtp_port == 465:
-            # timeoutを30秒に延長し、server_hostnameを明示
             with smtplib.SMTP_SSL(str(smtp_host), smtp_port, timeout=30, context=context) as server:
                 if smtp_user and smtp_pass:
                     server.login(smtp_user, smtp_pass)
@@ -2695,10 +2695,9 @@ https://app.kumanomorikaken.co.jp/admin/notifications
                 if smtp_user and smtp_pass:
                     server.login(smtp_user, smtp_pass)
                 server.send_message(msg)
-        print(f"Email sent to {target}")
+        print(f"INFO: Admin Email sent to {target}: {subject}")
     except Exception as e:
-        print(f"Failed to send email: {e}")
-        # Note: We don't raise the error here to avoid breaking the order creation flow
+        print(f"ERROR: Failed to send admin email: {e}")
 
 agency_serializer = URLSafeSerializer(SECRET_KEY + "-agency")
 
@@ -3798,112 +3797,6 @@ async def mark_notification_read_post(
         db.commit()
     return RedirectResponse(url="/admin/notifications", status_code=303)
 
-# ============================================================
-# 月次請求書自動発行スクリプト（手動実行とスケジュール用エンドポイント）
-# ============================================================
-@app.post("/admin/generate-monthly-invoices")
-async def generate_monthly_invoices(
-    db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
-):
-    """前月の代理店発注をまとめて請求書を生成する"""
-    now = datetime.datetime.now()
-    # 前月の期間
-    first_of_current = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    last_month_end = first_of_current - datetime.timedelta(seconds=1)
-    last_month_start = last_month_end.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    
-    # 代理店一覧
-    agencies = db.query(models.Customer).filter(models.Customer.is_agency == True).all()
-    generated_count = 0
-    
-    for agency in agencies:
-        # 前月の処理済み発注を集計
-        orders = db.query(models.AgencyOrder).filter(
-            models.AgencyOrder.customer_id == agency.id,
-            models.AgencyOrder.status == "処理済み",
-            models.AgencyOrder.order_date >= last_month_start,
-            models.AgencyOrder.order_date <= last_month_end
-        ).all()
-        
-        if not orders:
-            continue
-        
-        total = sum(o.total_amount for o in orders)
-        month_str = last_month_start.strftime('%Y%m')
-        inv_number = f"AGINV-{agency.id}-{month_str}"
-        
-        # 既に同月の請求書があったらスキップ
-        existing = db.query(models.Invoice).filter(models.Invoice.invoice_number == inv_number).first()
-        if existing:
-            continue
-        
-        # まず代理店発注用の見積＋受注をシャドウ作成
-        shadow_quote = models.Quotation(
-            customer_id=agency.id,
-            quote_number=f"Q-{inv_number}",
-            issue_date=first_of_current,
-            expiry_date=first_of_current + datetime.timedelta(days=30),
-            total_amount=total,
-            status=models.QuoteStatus.ORDERED,
-            memo=f"{last_month_start.strftime('%Y年%m月')}分 代理店月次請求"
-        )
-        db.add(shadow_quote)
-        db.flush()
-        
-        # 明細をまとめる
-        for order in orders:
-            for item in order.items:
-                qi = models.QuotationItem(
-                    quotation_id=shadow_quote.id,
-                    product_id=item.product_id,
-                    description=f"[{order.order_number}] {item.product_name}",
-                    quantity=item.quantity,
-                    unit_price=item.unit_price,
-                    subtotal=item.subtotal
-                )
-                db.add(qi)
-        
-        shadow_order = models.Order(
-            quotation_id=shadow_quote.id,
-            order_number=f"ORD-{inv_number}",
-            order_date=first_of_current,
-            total_amount=total,
-            status=models.OrderStatus.COMPLETED,
-            memo=f"{last_month_start.strftime('%Y年%m月')}分 代理店月次請求"
-        )
-        db.add(shadow_order)
-        db.flush()
-        
-        invoice = models.Invoice(
-            order_id=shadow_order.id,
-            invoice_number=inv_number,
-            issue_date=first_of_current + datetime.timedelta(days=1),  # 翌月2日
-            due_date=datetime.datetime.combine(
-                calculate_payment_date(
-                    get_next_closing_date(first_of_current.date(), agency.closing_day),
-                    agency.payment_term_months or 1,
-                    agency.payment_day or 31
-                ),
-                datetime.time.min
-            ),
-            total_amount=total,
-            status=models.InvoiceStatus.UNPAID,
-            memo=f"{last_month_start.strftime('%Y年%m月')}分 月次集計請求書"
-        )
-        db.add(invoice)
-        
-        # 代理店への通知
-        notification = models.Notification(
-            target_type="agency",
-            target_id=agency.id,
-            title="月次請求書発行",
-            message=f"{last_month_start.strftime('%Y年%m月')}分の請求書（{inv_number}）が発行されました。金額: ¥{total:,.0f}",
-            link="/agency/invoices",
-            related_type="Invoice",
-            related_id=invoice.id
-        )
-        db.add(notification)
         generated_count += 1
     
     db.commit()
