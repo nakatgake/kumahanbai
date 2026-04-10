@@ -4104,10 +4104,67 @@ async def cleanup_unpaid_invoices_execute(
         </body></html>
         """, status_code=500)
 
+
+# --- Diagnostic Route ---
+@app.get("/admin/diagnostic", response_class=HTMLResponse)
+async def db_diagnostic_page(request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    invoices = db.query(models.Invoice).order_by(models.Invoice.issue_date.desc()).all()
+    orders = db.query(models.Order).order_by(models.Order.order_date.desc()).all()
+    a_orders = db.query(models.AgencyOrder).order_by(models.AgencyOrder.order_date.desc()).all() if hasattr(models, 'AgencyOrder') else []
+    
+    html = f"""
+    <html>
+    <head>
+        <title>Database Diagnostic Report</title>
+        <style>
+            body {{ font-family: 'Helvetica Neue', Arial, sans-serif; padding: 40px; color: #333; background: #f4f7f6; }}
+            .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }}
+            h1 {{ color: #2c3e50; margin-top: 0; text-align: center; border-bottom: 2px solid #eee; padding-bottom: 20px; }}
+            h2 {{ color: #2980b9; border-left: 5px solid #3498db; padding-left: 15px; margin-top: 40px; }}
+            table {{ border-collapse: collapse; width: 100%; margin-top: 15px; border-radius: 8px; overflow: hidden; }}
+            th, td {{ border: 1px solid #eee; padding: 12px; text-align: left; }}
+            th {{ background-color: #3498db; color: white; }}
+            tr:nth-child(even) {{ background-color: #f9f9f9; }}
+            tr:hover {{ background-color: #f1f7fe; }}
+            .badge {{ display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; background: #95a5a6; color: white; }}
+            .badge-linked {{ background: #f39c12; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🔍 Database Diagnostic Status</h1>
+            <p style="text-align: right; color: #7f8c8d;">Checked at: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            
+            <h2>1. Invoices (請求書)</h2>
+            <table>
+                <tr><th>ID</th><th>Number</th><th>Issue Date</th><th>Amount</th><th>Status</th></tr>
+                {"".join([f"<tr><td>{i.id}</td><td>{i.invoice_number}</td><td>{i.issue_date}</td><td>¥{int(i.total_amount):,}</td><td>{i.status}</td></tr>" for i in invoices])}
+            </table>
+
+            <h2>2. Orders (通常受注)</h2>
+            <table>
+                <tr><th>ID</th><th>Number</th><th>Order Date</th><th>Amount</th><th>Linked InvID</th><th>Status</th></tr>
+                {"".join([f"<tr><td>{o.id}</td><td>{o.order_number}</td><td>{o.order_date}</td><td>¥{int(o.total_amount):,}</td><td><span class='badge {'badge-linked' if o.invoice_id else ''}'>{o.invoice_id or 'None'}</span></td><td>{o.status}</td></tr>" for o in orders])}
+            </table>
+
+            <h2>3. Agency Orders (代理店受注)</h2>
+            <table>
+                <tr><th>ID</th><th>Number</th><th>Order Date</th><th>Amount</th><th>Linked InvID</th><th>Status</th></tr>
+                {"".join([f"<tr><td>{o.id}</td><td>{o.order_number}</td><td>{o.order_date}</td><td>¥{int(o.total_amount):,}</td><td><span class='badge {'badge-linked' if o.invoice_id else ''}'>{o.invoice_id or 'None'}</span></td><td>{o.status}</td></tr>" for o in a_orders])}
+            </table>
+            
+            <div style="margin-top: 50px; text-align: center;">
+                <a href="/" style="color: #3498db; text-decoration: none; font-weight: bold;">← Back to Admin Page</a>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
 # TEST_COMMIT: 2026-04-02-0001
-
 # FINAL_SYSTEM_CHECK_SUCCESS: 2026-04-02-0010
