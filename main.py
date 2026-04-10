@@ -320,8 +320,8 @@ def closing_notification_job():
             # 今日が締め日の場合のみ処理実行
             if is_closing_day(today, cust.closing_day):
                 # 1. 未請求の標準受注を抽出 (出荷済み or 完了 のみ)
-                # 100%解決のため、テスト期間中（2026-04-10以前）のデータは絶対に拾わない条件を追加
-                safe_date = datetime.datetime(2026, 4, 10)
+                # 100%解決のため、本日（2026-04-11）より前のデータは絶対に自動発行しない
+                safe_date = datetime.datetime(2026, 4, 11)
                 standard_orders = db.query(models.Order).join(models.Quotation).filter(
                     models.Quotation.customer_id == cust.id,
                     models.Order.invoice_id == None,
