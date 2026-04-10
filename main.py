@@ -4051,7 +4051,8 @@ async def cleanup_unpaid_invoices_execute(
             'INV-AG-2-04091040',
             'INV-AG-3-04101018',
             'INV-20260407083714',
-            'INV-20260402135340' # 前回のゾンビ
+            'INV-20260402135340', # 前回のゾンビ
+            'INV-20260402135954'
         ]
         
         results.append(f"削除対象の特定テストデータ: {len(target_invoices)}件想定")
