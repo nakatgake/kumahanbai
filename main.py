@@ -4035,9 +4035,13 @@ async def cleanup_unpaid_invoices_execute(
         results.append(f"対象請求書: {len(unpaid)}件")
         for inv in unpaid:
             results.append(f"  - {inv.invoice_number} を削除中...")
-            a_orders = db.query(models.AgencyOrder).filter(models.AgencyOrder.invoice_id == inv.id).all()
-            for ao in a_orders:
-                ao.invoice_id = None
+            # agency_ordersのinvoice_idカラムが存在しない旧スキーマでも動作するよう例外処理
+            try:
+                a_orders = db.query(models.AgencyOrder).filter(models.AgencyOrder.invoice_id == inv.id).all()
+                for ao in a_orders:
+                    ao.invoice_id = None
+            except Exception:
+                pass  # カラムが存在しない場合はスキップ
             orders = db.query(models.Order).filter(models.Order.invoice_id == inv.id).all()
             for o in orders:
                 if any(o.order_number.startswith(p) for p in ['ORD-INV-', 'ORD-AGINV-', 'ORD-SHADOW-']):
