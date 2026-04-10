@@ -3213,16 +3213,18 @@ async def admin_invoice_dispatch(
     postal_invoices = []
     
     for inv in unpaid_invoices:
-        # 通常の注文(Order)にはQuotationを介してCustomerが紐付いている
-        if inv.order and inv.order.quotation and inv.order.quotation.customer:
-            customer = inv.order.quotation.customer
+        # 合算請求書対応の顧客取得ロジック
+        customer = inv.customer if inv.customer else (
+            inv.orders[0].quotation.customer if getattr(inv, 'orders', None) and inv.orders and inv.orders[0].quotation else None
+        )
+        if customer:
             # カラムが存在しない場合やデータがNULLの場合の安全策
             method = getattr(customer, 'invoice_delivery_method', 'POSTAL')
             if method == "EMAIL":
                 email_invoices.append(inv)
             else:
                 postal_invoices.append(inv)
-                
+
     success_msg = request.query_params.get("success")
     error_msg = request.query_params.get("error")
                 
@@ -3279,11 +3281,14 @@ async def dispatch_invoices_email(
         
         for inv_id in invoice_ids:
             inv = db.query(models.Invoice).get(inv_id)
-            if not inv or not inv.order or not inv.order.quotation or not inv.order.quotation.customer:
+            if not inv:
                 continue
+                
+            customer = inv.customer if inv.customer else (
+                inv.orders[0].quotation.customer if getattr(inv, 'orders', None) and inv.orders and inv.orders[0].quotation else None
+            )
             
-            customer = inv.order.quotation.customer
-            if not customer.email:
+            if not customer or not customer.email:
                 continue
                 
             msg = MIMEMultipart("alternative")
@@ -3310,7 +3315,7 @@ async def dispatch_invoices_email(
                     <tr>
                         <th style="text-align: left; padding: 10px; border-bottom: 2px solid #ccc;">ご請求金額</th>
                         <td style="padding: 10px; border-bottom: 1px solid #eee; font-size: 1.2em; font-weight: bold; color: #e74c3c;">
-                            ¥{"{:,.0f}".format(inv.total_amount)}
+                            ¥{"{:,.0f}".format(int(inv.total_amount))}
                         </td>
                     </tr>
                     <tr>
