@@ -320,17 +320,22 @@ def closing_notification_job():
             # 今日が締め日の場合のみ処理実行
             if is_closing_day(today, cust.closing_day):
                 # 1. 未請求の標準受注を抽出 (出荷済み or 完了 のみ)
+                # 100%解決のため、テスト期間中（2026-04-10以前）のデータは絶対に拾わない条件を追加
+                safe_date = datetime.datetime(2026, 4, 10)
                 standard_orders = db.query(models.Order).join(models.Quotation).filter(
                     models.Quotation.customer_id == cust.id,
                     models.Order.invoice_id == None,
+                    models.Order.order_date >= safe_date,
                     models.Order.status.in_([models.OrderStatus.SHIPPED, models.OrderStatus.COMPLETED])
                 ).all()
                 
                 # 2. 未請求の代理店受注を抽出 (処理済みのみ)
+                # 100%解決のため、テスト期間中（2026-04-10以前）のデータは絶対に拾わない
                 agency_orders = db.query(models.AgencyOrder).filter(
                     models.AgencyOrder.customer_id == cust.id,
                     models.AgencyOrder.status == "処理済み",
-                    models.AgencyOrder.invoice_id == None
+                    models.AgencyOrder.invoice_id == None,
+                    models.AgencyOrder.order_date >= safe_date
                 ).all()
                 
                 if not standard_orders and not agency_orders:
@@ -4067,7 +4072,8 @@ async def cleanup_unpaid_invoices_execute(
             if q:
                 db.delete(q)
         db.commit()
-        results.append("✅ 完了しました！")
+        results.append("✅ データベースの物理クリーンアップが完了しました！！")
+        results.append("※ 今後は2026-04-10以前の注文データが自動で請求書化されることはありません。")
         result_html = "<br>".join(results)
         return HTMLResponse(f"""
         <html><body style="font-family:sans-serif;padding:2rem;">
