@@ -2121,6 +2121,11 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
         
         # 右側：発行元
         issuer_x = 130
+        
+        # 電子印影の配置 (テキストの前に配置することで、テキスが上に重なるようにする)
+        if os.path.exists("static/images/seal.png"):
+            pdf.image("static/images/seal.png", x=issuer_x + 35, y=38, w=22)
+
         pdf.set_xy(issuer_x, 35)
         pdf.set_font("Japanese" if font_found else "helvetica", "", 12)
         pdf.set_text_color(*primary_color)
@@ -2139,9 +2144,6 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
         pdf.set_x(issuer_x)
         pdf.cell(0, 5, "登録番号: T5410001014110", ln=True)
         
-        # 電子印影の配置
-        if os.path.exists("static/images/seal.png"):
-            pdf.image("static/images/seal.png", x=issuer_x + 40, y=40, w=20)
 
         pdf.ln(10)
 
