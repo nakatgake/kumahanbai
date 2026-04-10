@@ -1109,8 +1109,7 @@ async def create_quotation(
     
     discount_amount = int(total * (discount_rate / 100))
     final_total_tax_excl = total - discount_amount
-    if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
-        return HTMLResponse(content="<script>alert('ご注文税込み金額が1万円以下の為、お受けすることができません。'); history.back();</script>", status_code=400)
+    # 10k JPY limit check removed for Admin system per request
 
     quotation.total_amount = final_total_tax_excl
     db.commit()
@@ -1213,8 +1212,7 @@ async def update_quotation(
     
     discount_amount = int(total * (discount_rate / 100))
     final_total_tax_excl = total - discount_amount
-    if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
-        return HTMLResponse(content="<script>alert('ご注文税込み金額が1万円以下の為、お受けすることができません。'); history.back();</script>", status_code=400)
+    # 10k JPY limit check removed for Admin system per request
 
     quotation.total_amount = final_total_tax_excl
     db.commit()
@@ -1581,8 +1579,7 @@ async def create_direct_order(
     
     discount_amount = int(total * (discount_rate / 100))
     final_total_tax_excl = total - discount_amount
-    if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
-        return HTMLResponse(content="<script>alert('ご注文税込み金額が1万円以下の為、お受けすることができません。'); history.back();</script>", status_code=400)
+    # 10k JPY limit check removed for Admin system per request
 
     quotation.total_amount = final_total_tax_excl
     
@@ -1686,8 +1683,7 @@ async def update_order(
     
     discount_amount = int(total * (discount_rate / 100))
     final_total_tax_excl = total - discount_amount
-    if customer_rank != "RETAIL" and int(final_total_tax_excl * 1.1) < 10000:
-        return HTMLResponse(content="<script>alert('ご注文税込み金額が1万円以下の為、お受けすることができません。'); history.back();</script>", status_code=400)
+    # 10k JPY limit check removed for Admin system per request
 
     quotation.total_amount = final_total_tax_excl
     order.total_amount = quotation.total_amount
