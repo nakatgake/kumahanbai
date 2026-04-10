@@ -1,0 +1,152 @@
+{% extends "layout.html" %}
+
+{% block content %}
+{% if request.query_params.get('error') == 'no_email' %}
+<div style="background: #ffebee; border-left: 4px solid #e53935; color: #b71c1c; padding: 1rem 1.5rem; border-radius: 6px; margin-bottom: 1.5rem;">
+    <strong>⚠️ 送信エラー：</strong>この顧客にメールアドレスが登録されていません。
+    <a href="/customers" style="color: #b71c1c; font-weight: bold;">顧客管理からアドレスを登録してください。</a>
+</div>
+{% endif %}
+<div class="header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <h2>請求書詳細：{{ invoice.invoice_number }}</h2>
+    <div style="display: flex; gap: 1rem;">
+        <a href="/invoices" class="btn btn-secondary">一覧へ戻る</a>
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 350px; gap: 2rem;">
+    <!-- 左側: 内容確認とプレビュー -->
+    <div>
+        <div class="card" style="margin-bottom: 2rem; padding: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem;">
+                <div>
+                    <h3 style="margin: 0;">{{ customer.company or customer.name }} 御中</h3>
+                    <p style="color: #666; margin: 5px 0;">送付方法の設定：
+                        {% if customer.invoice_delivery_method == 'EMAIL' %}
+                            <span style="color: #2e7d32; font-weight: bold;">📧 メール送信希望</span>
+                        {% else %}
+                            <span style="color: #1565c0; font-weight: bold;">📮 郵送希望</span>
+                        {% endif %}
+                    </p>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 0.9rem; color: #666;">請求日: {{ invoice.issue_date.strftime('%Y/%m/%d') }}</div>
+                    <div style="font-size: 0.9rem; color: #666;">支払期限: {{ invoice.due_date.strftime('%Y/%m/%d') }}</div>
+                </div>
+            </div>
+
+            <div style="background: #f8f9fa; border: 2px solid #1a2a6c; padding: 1.5rem; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                <span style="font-size: 1.1rem; font-weight: bold;">御請求金額（税込）</span>
+                <span style="font-size: 2rem; font-weight: bold; color: #1a2a6c;">¥{{ "{:,.0f}".format((invoice.total_amount * 1.1)|int) }}-</span>
+            </div>
+
+            <h4>合算された受注内訳</h4>
+            <div class="table-responsive">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid #ddd;">
+                            <th style="padding: 10px; text-align: left;">受注日 / 番号</th>
+                            <th style="padding: 10px; text-align: left;">商品名</th>
+                            <th style="padding: 10px; text-align: right;">単価</th>
+                            <th style="padding: 10px; text-align: center;">数量</th>
+                            <th style="padding: 10px; text-align: right;">金額(税抜)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in orders %}
+                            <!-- 受注セパレーター -->
+                            <tr style="background: #f0f4f8;">
+                                <td colspan="5" style="padding: 8px 10px; font-weight: bold; font-size: 0.9rem;">
+                                    📅 {{ order.order_date.strftime('%Y/%m/%d') }} ｜ No: {{ order.order_number }}
+                                </td>
+                            </tr>
+                            {% if order.quotation %}
+                                {% for item in order.quotation.items %}
+                                <tr style="border-bottom: 1px solid #eee;">
+                                    <td style="padding: 10px; color: #999; font-size: 0.8rem;">(注文明細)</td>
+                                    <td style="padding: 10px;">{{ item.product.name if item.product else item.description }}</td>
+                                    <td style="padding: 10px; text-align: right;">{{ "{:,.0f}".format(item.unit_price) }}</td>
+                                    <td style="padding: 10px; text-align: center;">{{ item.quantity }}</td>
+                                    <td style="padding: 10px; text-align: right;">{{ "{:,.0f}".format(item.subtotal) }}</td>
+                                </tr>
+                                {% endfor %}
+                            {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- PDFプレビューへの導線 -->
+        <div class="card" style="padding: 1rem; text-align: center; background: #e9ecef;">
+            <p style="margin-bottom: 1rem;">実際にお客様に届くPDFのレイアウトを確認します</p>
+            <a href="/invoices/{{ invoice.id }}/print" target="_blank" class="btn btn-outline-primary">📄 印刷用レイアウト（PDF）を表示</a>
+        </div>
+    </div>
+
+    <!-- 右側: アクションパネル -->
+    <div style="position: sticky; top: 20px;">
+        <div class="card" style="padding: 1.5rem;">
+            <h4 style="margin-top: 0; border-bottom: 1px solid #ddd; padding-bottom: 10px;">送付アクション</h4>
+            
+            <div style="margin-bottom: 1.5rem;">
+                <p style="font-size: 0.9rem; color: #666;">現在の状態：</p>
+                {% if invoice.delivery_status == 'UNSENT' %}
+                    <span style="background: #fff3e0; color: #ef6c00; padding: 5px 15px; border-radius: 20px; font-weight: bold;">未送付</span>
+                {% elif invoice.delivery_status == 'SENT' %}
+                    <span style="background: #e8f5e9; color: #2e7d32; padding: 5px 15px; border-radius: 20px; font-weight: bold;">メール送信済</span>
+                {% elif invoice.delivery_status == 'MAILED' %}
+                    <span style="background: #e3f2fd; color: #1565c0; padding: 5px 15px; border-radius: 20px; font-weight: bold;">郵送処理済</span>
+                {% endif %}
+            </div>
+
+            {% if customer.invoice_delivery_method == 'EMAIL' %}
+                <!-- メール送信ボタンを強調 -->
+                {% if customer.email %}
+                <form action="/invoices/{{ invoice.id }}/send_email" method="post" style="margin-bottom: 1rem;">
+                    <button type="submit" class="btn btn-lg btn-primary" style="width: 100%; height: 60px; font-size: 1.1rem;" onclick="return confirm('お客様（{{ customer.email }}）へ請求書メールを送信しますか？')">
+                        ✉ お客様へメール送信
+                    </button>
+                    <p style="font-size: 0.8rem; color: #2e7d32; text-align: center; margin-top: 5px;">★ 顧客設定：メール受取<br>送信先: {{ customer.email }}</p>
+                </form>
+                {% else %}
+                <div style="background: #fff3e0; border: 1px solid #ff9800; padding: 1rem; border-radius: 6px; margin-bottom: 1rem;">
+                    <p style="color: #e65100; margin: 0; font-size: 0.9rem;"><strong>⚠️ メール未設定</strong><br>
+                    顧客のメールアドレスが未登録です。
+                    <a href="/customers" style="color: #e65100; font-weight: bold;">顧客管理</a>から登録してください。</p>
+                </div>
+                {% endif %}
+                <form action="/invoices/{{ invoice.id }}/mark_mailed" method="post">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary" style="width: 100%;">（手動）郵送済みとしてマーク</button>
+                </form>
+            {% else %}
+                <!-- 郵送ボタンを強調 -->
+                <form action="/invoices/{{ invoice.id }}/mark_mailed" method="post" style="margin-bottom: 1rem;">
+                    <button type="submit" class="btn btn-lg btn-info" style="width: 100%; height: 60px; font-size: 1.1rem; color: white;">
+                        ⎙ 印刷して郵送完了
+                    </button>
+                    <p style="font-size: 0.8rem; color: #1565c0; text-align: center; margin-top: 5px;">★ 顧客設定：郵送希望</p>
+                </form>
+                <form action="/invoices/{{ invoice.id }}/send_email" method="post">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary" style="width: 100%;" onclick="return confirm('{{ customer.email }} へメールを送信しますか？')">（例外）メールでも送信する</button>
+                </form>
+            {% endif %}
+
+            <hr style="margin: 1.5rem 0;">
+            
+            <p style="font-size: 0.8rem; color: #999;">請求金額の修正が必要な場合は、受注データ自体の修正または下記から編集を行ってください。</p>
+            <a href="/invoices/edit/{{ invoice.id }}" class="btn btn-sm btn-warning" style="width: 100%;">請求書情報の編集</a>
+            
+            <form action="/invoices/delete/{{ invoice.id }}" method="post" style="margin-top: 10px;">
+                <button type="submit" class="btn btn-sm btn-danger" style="width: 100%;" onclick="return confirm('請求書を削除し、紐づく受注を未請求状態に戻しますか？')">請求書を削除(解除)</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<style>
+    .badge-email { background: #e8f5e9; color: #2e7d32; }
+    .badge-postal { background: #e3f2fd; color: #1565c0; }
+    .order-sep td { color: #1a2a6c; }
+</style>
+{% endblock %}
