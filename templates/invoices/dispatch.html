@@ -9,10 +9,29 @@
 </div>
 
 {% if success_msg %}
-<div style="background: #d4edda; color: #155724; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; border: 1px solid #c3e6cb;">
-    ✅ {{ success_msg }}件の未入金請求書をメールで一括送信しました。
+<div style="background: #e8f5e9; color: #1b5e20; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; border: 1px solid #c8e6c9; display: flex; align-items: center; gap: 0.8rem;">
+    <span style="font-size: 1.5rem;">✅</span>
+    <strong>送信完了：</strong> {{ success_msg }}件の請求書をメールで送信しました。
 </div>
 {% endif %}
+
+<!-- サマリーセクション -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+    <div class="card" style="padding: 1rem; border-left: 4px solid #3498db; background: #f8fbff;">
+        <div style="font-size: 0.8rem; color: #666; margin-bottom: 0.3rem;">メール送信待ち</div>
+        <div style="font-size: 1.8rem; font-weight: bold; color: #2c3e50;">{{ email_invoices|length }}<span style="font-size: 1rem; margin-left: 0.3rem;">件</span></div>
+    </div>
+    <div class="card" style="padding: 1rem; border-left: 4px solid #27ae60; background: #f8fff9;">
+        <div style="font-size: 0.8rem; color: #666; margin-bottom: 0.3rem;">郵送(印刷)待ち</div>
+        <div style="font-size: 1.8rem; font-weight: bold; color: #2c3e50;">{{ postal_invoices|length }}<span style="font-size: 1rem; margin-left: 0.3rem;">件</span></div>
+    </div>
+    <div class="card" style="padding: 1rem; border-left: 4px solid #f39c12; background: #fffdf8;">
+        <div style="font-size: 0.8rem; color: #666; margin-bottom: 0.3rem;">自動締処理（本日分）</div>
+        {% set auto_count = 0 %}
+        {% for inv in email_invoices + postal_invoices %}{% if '自動生成' in (inv.memo or '') %}{% set auto_count = auto_count + 1 %}{% endif %}{% endfor %}
+        <div style="font-size: 1.8rem; font-weight: bold; color: #2c3e50;">{{ auto_count }}<span style="font-size: 1rem; margin-left: 0.3rem;">件</span></div>
+    </div>
+</div>
 
 {% if error_msg %}
 <div style="background: #f8d7da; color: #721c24; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; border: 1px solid #f5c6cb;">
@@ -35,6 +54,7 @@
                     <th><input type="checkbox" id="check-all-email" checked onchange="toggleAll('email', this.checked)"></th>
                     <th>請求書番号</th>
                     <th>顧客名</th>
+                    <th style="text-align: center;">締め日</th>
                     <th>メールアドレス</th>
                     <th>請求額</th>
                 </tr>
@@ -45,9 +65,21 @@
                 <tr>
                     <td><input type="checkbox" name="invoice_ids" value="{{ inv.id }}" class="check-email" checked></td>
                     <td>{{ inv.invoice_number }}</td>
-                    <td>{{ customer.company if customer.company else customer.name if customer else '---' }}</td>
+                    <td>
+                        <div style="font-weight: bold;">{{ customer.company if customer.company else customer.name if customer else '---' }}</div>
+                        {% if '自動生成' in inv.memo %}<span style="font-size: 0.75rem; background: #e8f5e9; color: #2e7d32; padding: 2px 6px; border-radius: 4px;">🔄 システム自動締処理分</span>{% endif %}
+                    </td>
+                    <td style="text-align: center;">
+                        {% if customer and customer.closing_day %}
+                            <span style="background: #e1f5fe; color: #0277bd; padding: 4px 10px; border-radius: 20px; font-weight: bold; font-size: 0.85rem;">
+                                {{ customer.closing_day if customer.closing_day != 31 else '末' }}日
+                            </span>
+                        {% else %}
+                            <span style="color: #999;">---</span>
+                        {% endif %}
+                    </td>
                     <td>{{ customer.email if customer and customer.email else '' }}</td>
-                    <td>¥{{ "{:,.0f}".format(inv.total_amount) if inv.total_amount is not none else "0" }}</td>
+                    <td style="font-weight: bold; color: #2c3e50;">¥{{ "{:,.0f}".format(inv.total_amount) if inv.total_amount is not none else "0" }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -73,6 +105,7 @@
                     <th><input type="checkbox" id="check-all-postal" checked onchange="toggleAll('postal', this.checked)"></th>
                     <th>請求書番号</th>
                     <th>顧客名</th>
+                    <th style="text-align: center;">締め日</th>
                     <th>住所</th>
                     <th>請求額</th>
                 </tr>
@@ -83,9 +116,21 @@
                 <tr>
                     <td><input type="checkbox" name="invoice_ids" value="{{ inv.id }}" class="check-postal" checked></td>
                     <td>{{ inv.invoice_number }}</td>
-                    <td>{{ customer.company if customer.company else customer.name if customer else '---' }}</td>
+                    <td>
+                        <div style="font-weight: bold;">{{ customer.company if customer.company else customer.name if customer else '---' }}</div>
+                        {% if '自動生成' in inv.memo %}<span style="font-size: 0.75rem; background: #e8f5e9; color: #2e7d32; padding: 2px 6px; border-radius: 4px;">🔄 システム自動締処理分</span>{% endif %}
+                    </td>
+                    <td style="text-align: center;">
+                        {% if customer and customer.closing_day %}
+                            <span style="background: #e8f5e9; color: #2e7d32; padding: 4px 10px; border-radius: 20px; font-weight: bold; font-size: 0.85rem;">
+                                {{ customer.closing_day if customer.closing_day != 31 else '末' }}日
+                            </span>
+                        {% else %}
+                            <span style="color: #999;">---</span>
+                        {% endif %}
+                    </td>
                     <td>{{ customer.address if customer and customer.address else '' }}</td>
-                    <td>¥{{ "{:,.0f}".format(inv.total_amount) if inv.total_amount is not none else "0" }}</td>
+                    <td style="font-weight: bold; color: #2c3e50;">¥{{ "{:,.0f}".format(inv.total_amount) if inv.total_amount is not none else "0" }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -99,6 +144,33 @@
     <p style="color: #999; text-align: center; padding: 2rem;">郵送（印刷）対象の請求書はありません。</p>
     {% endif %}
 </div>
+
+<style>
+    .badge-closing {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 50px;
+        font-size: 0.85rem;
+        font-weight: 700;
+        text-align: center;
+        min-width: 60px;
+    }
+    .badge-email-type { background-color: #e1f5fe; color: #0277bd; }
+    .badge-postal-type { background-color: #e8f5e9; color: #2e7d32; }
+    .badge-auto {
+        display: inline-block;
+        font-size: 0.75rem;
+        background: #fff3e0;
+        color: #e65100;
+        padding: 2px 8px;
+        border-radius: 4px;
+        border: 1px solid #ffeb3b;
+        margin-top: 4px;
+        font-weight: bold;
+    }
+    tr:hover { background-color: #f5f8fa !important; }
+    table th { background-color: #f0f4f7; color: #455a64; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; }
+</style>
 
 <script>
 function toggleAll(type, checked) {

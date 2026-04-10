@@ -144,10 +144,12 @@ class AgencyOrder(Base):
     order_date = Column(DateTime, default=datetime.datetime.utcnow)
     total_amount = Column(Float, default=0.0)
     status = Column(String, default="未処理")  # 未処理 / 処理済み / キャンセル
+    invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True)
     memo = Column(String, nullable=True)
 
     customer = relationship("Customer", back_populates="agency_orders")
     items = relationship("AgencyOrderItem", back_populates="agency_order", cascade="all, delete-orphan")
+    invoice = relationship("Invoice", backref="agency_orders")
 
 class AgencyOrderItem(Base):
     """代理店発注の明細"""
