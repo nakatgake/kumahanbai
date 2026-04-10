@@ -319,10 +319,11 @@ def closing_notification_job():
             
             # 今日が締め日の場合のみ処理実行
             if is_closing_day(today, cust.closing_day):
-                # 1. 未請求の標準受注を抽出
+                # 1. 未請求の標準受注を抽出 (出荷済み or 完了 のみ)
                 standard_orders = db.query(models.Order).join(models.Quotation).filter(
                     models.Quotation.customer_id == cust.id,
-                    models.Order.invoice_id == None
+                    models.Order.invoice_id == None,
+                    models.Order.status.in_([models.OrderStatus.SHIPPED, models.OrderStatus.COMPLETED])
                 ).all()
                 
                 # 2. 未請求の代理店受注を抽出 (処理済みのみ)
@@ -4046,19 +4047,19 @@ async def cleanup_unpaid_invoices_execute(
             
             orders = db.query(models.Order).filter(models.Order.invoice_id == inv.id).all()
             for o in orders:
-                # テスト用/自動生成用の特殊な受注番号は物理削除
+                # テスト用/自動生成用の特殊な受注番号は物理削除（関連する見積書も削除）
                 if any(o.order_number.startswith(p) for p in ['ORD-INV-', 'ORD-AGINV-', 'ORD-SHADOW-']):
                     q = o.quotation
                     db.delete(o)
                     if q:
                         db.delete(q)
                 else:
-                    # 通常の受注は紐付けを解除し、ステータスを「未出荷」に戻して自動生成を止める
+                    # 通常の受注は紐付けを解除し、ステータスを「未出荷」に戻して自動生成のループを止める
                     o.invoice_id = None
                     o.status = models.OrderStatus.PENDING
             db.delete(inv)
         
-        # 不要な残存シャドウ受注も掃除
+        # システムで浮いている不要な残存シャドウ受注も完全に掃除
         shadows = db.query(models.Order).filter(models.Order.order_number.like("ORD-SHADOW-%")).all()
         for s in shadows:
             q = s.quotation
