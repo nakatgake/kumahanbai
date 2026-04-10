@@ -1,6 +1,8 @@
 import smtplib
 import ssl
-from email.message import EmailMessage
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
@@ -24,9 +26,11 @@ def send_notification(
     subject: str,
     body: str,
     to: Optional[List[str]] = None,
+    attachments: Optional[List[dict]] = None
 ) -> bool:
     """SystemSetting に登録された SMTP 設定でメールを送信。
     - `to` が None の場合は社内担当者 info@kumanomorikaken.co.jp に送信。
+    - `attachments` は [{'name': str, 'content': bytes}] のリスト。
     - 例外が発生したら `False` を返す。
     """
     db = SessionLocal()
@@ -41,11 +45,21 @@ def send_notification(
         if not all([host, user, password]):
             raise RuntimeError("SMTP 設定が未完了です (host/user/pass が必要)")
 
-        msg = EmailMessage()
+        # Create message
+        msg = MIMEMultipart()
         msg["Subject"] = subject
         msg["From"] = sender
         msg["To"] = ", ".join(to or ["info@kumanomorikaken.co.jp"])
-        msg.set_content(body)
+        
+        # Body
+        msg.attach(MIMEText(body, 'plain'))
+
+        # Attachments
+        if attachments:
+            for att in attachments:
+                part = MIMEApplication(att['content'], Name=att['name'])
+                part['Content-Disposition'] = f'attachment; filename="{att["name"]}"'
+                msg.attach(part)
 
         context = ssl.create_default_context()
         if port == 465:

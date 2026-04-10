@@ -371,7 +371,7 @@ def closing_notification_job():
                 # 管理者への通知メール
                 # 管理者への通知メール
                 subject = f"【自動作成】本日締め日：{cust.company} 様の合算請求書を作成しました"
-                body = f"""株式会社 熊野森科学研究所 担当者様
+                body = f"""株式会社熊ノ護化研 担当者様
 
 本日（{today.strftime('%Y/%m/%d')}）は、{cust.company} 様の締め日です。
 以下の通り、複数の受注を1枚にまとめた合算請求書を自動作成しました。
@@ -2044,41 +2044,141 @@ async def delete_invoice(invoice_id: int, db: Session = Depends(get_db), user: m
     response.headers["HX-Refresh"] = "true"
     return response
 
+def generate_invoice_pdf_content(invoice: models.Invoice):
+    """請求書のPDFデータを生成してバイト列で返す"""
+    from fpdf import FPDF
+    import io
+
+    # 日本語フォント設定
+    # Xserver(Linux)とWindowsの両方に対応するためのフォントパス候補
+    font_paths = [
+        "C:\\Windows\\Fonts\\msgothic.ttc", # Windows
+        "/usr/share/fonts/truetype/noto/NotoSansJP-Regular.otf", # Linux (Noto)
+        "/usr/share/fonts/fonts-japanese-gothic.ttf", 
+        "static/fonts/IPAexGothic.ttf" # プロジェクト内
+    ]
+    
+    pdf = FPDF()
+    pdf.add_page()
+    
+    font_found = False
+    for path in font_paths:
+        if os.path.exists(path):
+            try:
+                pdf.add_font("Japanese", "", path)
+                pdf.set_font("Japanese", size=10)
+                font_found = True
+                break
+            except:
+                continue
+    
+    if not font_found:
+        pdf.set_font("helvetica", size=10)
+
+    # ヘッダー
+    pdf.set_font("Japanese" if font_found else "helvetica", "", 16)
+    pdf.cell(0, 10, "御 申 込 兼 請 求 書", ln=True, align="C")
+    pdf.ln(5)
+
+    pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
+    
+    # 左側：宛先
+    customer = invoice.customer if invoice.customer else (invoice.orders[0].quotation.customer if invoice.orders else None)
+    customer_name = (customer.company or customer.name) if customer else "御中"
+    pdf.cell(100, 6, f"{customer_name}  {customer.honorific if customer else '御中'}", ln=False)
+    
+    # 右側：請求情報
+    pdf.cell(0, 6, f"請求番号: {invoice.invoice_number}", ln=True, align="R")
+    pdf.cell(100, 6, "", ln=False)
+    pdf.cell(0, 6, f"発行日: {invoice.issue_date.strftime('%Y/%m/%d') if invoice.issue_date else ''}", ln=True, align="R")
+    pdf.cell(100, 6, "", ln=False)
+    pdf.cell(0, 6, f"お支払期限: {invoice.due_date.strftime('%Y/%m/%d') if invoice.due_date else ''}", ln=True, align="R")
+    pdf.ln(10)
+
+    # 合計金額
+    pdf.set_font("Japanese" if font_found else "helvetica", "", 14)
+    grand_total = int(invoice.total_amount * 1.1)
+    pdf.cell(0, 10, f"ご請求金額（税込）:  ¥{grand_total:,.0f} -", border="B", ln=True)
+    pdf.ln(5)
+
+    # 明細テーブル
+    pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
+    pdf.cell(90, 8, "品名 / 摘要", border=1, align="C")
+    pdf.cell(25, 8, "数量", border=1, align="C")
+    pdf.cell(35, 8, "単価", border=1, align="C")
+    pdf.cell(40, 8, "小計", border=1, align="C", ln=True)
+
+    pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
+    
+    # 明細行のループ
+    for order in invoice.orders:
+        if order.quotation:
+            for item in order.quotation.items:
+                pdf.cell(90, 7, item.description, border=1)
+                pdf.cell(25, 7, f"{item.quantity}", border=1, align="R")
+                pdf.cell(35, 7, f"¥{item.unit_price:,.0f}", border=1, align="R")
+                pdf.cell(40, 7, f"¥{item.subtotal:,.0f}", border=1, align="R", ln=True)
+
+    # 合計計算
+    pdf.ln(5)
+    pdf.cell(150, 6, "小計（税抜）", align="R")
+    pdf.cell(40, 6, f"¥{int(invoice.total_amount):,.0f}", align="R", ln=True)
+    pdf.cell(150, 6, "消費税（10%）", align="R")
+    pdf.cell(40, 6, f"¥{int(invoice.total_amount * 0.1):,.0f}", align="R", ln=True)
+    pdf.set_font("Japanese" if font_found else "helvetica", "", 11)
+    pdf.cell(150, 8, "合計（税込）", align="R")
+    pdf.cell(40, 8, f"¥{grand_total:,.0f}", align="R", ln=True)
+
+    # 自社情報
+    pdf.ln(10)
+    pdf.set_font("Japanese" if font_found else "helvetica", "", 10)
+    pdf.cell(120, 5, "", ln=False)
+    pdf.cell(0, 5, "株式会社熊ノ護化研", ln=True)
+    pdf.cell(120, 5, "", ln=False)
+    pdf.cell(0, 5, "〒010-0001 秋田県秋田市中通3-1-9", ln=True)
+    pdf.cell(120, 5, "", ln=False)
+    pdf.cell(0, 5, "TEL: 018-838-1920", ln=True)
+
+    # バイト列として出力
+    return pdf.output()
+
 @app.post("/invoices/{id}/send_email")
 async def send_invoice_email(id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
     invoice = db.query(models.Invoice).get(id)
     if not invoice:
         return RedirectResponse(url="/invoices", status_code=303)
     
-    customer = invoice.customer
+    customer = invoice.customer if invoice.customer else (invoice.orders[0].quotation.customer if invoice.orders else None)
     if not customer or not customer.email:
-        # メールアドレスがない場合はエラー
         return RedirectResponse(url=f"/invoices/{id}?error=no_email", status_code=303)
     
-    # メール送信ロジック（本来はここにPDF添付の処理を入れる）
-    subject = f"【請求書】株式会社 熊野森科学研究所より（請求番号：{invoice.invoice_number}）"
+    # PDF生成
+    pdf_content = generate_invoice_pdf_content(invoice)
+    attachments = [{
+        "name": f"請求書_{invoice.invoice_number}.pdf",
+        "content": pdf_content
+    }] if pdf_content else None
+    
+    subject = f"【ご請求書】株式会社熊ノ護化研より（請求番号：{invoice.invoice_number}）"
     body = f"""{customer.company or customer.name}
 {customer.honorific or '御中'}
 
 いつも大変お世話になっております。
-株式会社 熊野森科学研究所でございます。
+株式会社熊ノ護化研でございます。
 
-今月分（合算）の請求書をお送りさせていただきます。
+今月分の請求書をお送りさせていただきます。
 詳細は添付のPDFまたは以下のリンクよりご確認ください。
 
 ■ 請求番号：{invoice.invoice_number}
-■ 御請求金額（税込）：¥{'{:,.0f}'.format(int(invoice.total_amount * 1.1))}-
-■ お支払期限：{invoice.due_date.strftime('%Y/%m/%d')}
+■ 御請求金額（税込）：¥{'{:,.0f}'.format(grand_total := int(invoice.total_amount * 1.1))}-
+■ お支払期限：{invoice.due_date.strftime('%Y/%m/%d') if invoice.due_date else ''}
 
-[振込先情報]
-〇〇銀行 〇〇支店
-普通 1234567 
-株式会社 熊野森科学研究所
+お振込先情報は添付の請求書PDF内に記載しております。
+ご確認のほど、何卒よろしくお願い申し上げます。
 
 ※ 本メールはシステムより送信されています。
 """
-    # 実際にはここに send_notification(..., attachment=pdf) を追加
-    send_notification(subject, body, to=[customer.email])
+    send_notification(subject, body, to=[customer.email], attachments=attachments)
     
     # ステータス更新
     invoice.delivery_status = "SENT"
@@ -3323,13 +3423,13 @@ async def dispatch_invoices_email(
             if not customer or not customer.email:
                 continue
                 
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = f"【株式会社熊ノ護化研】ご請求書（{inv.invoice_number}）のご案内"
+            msg = MIMEMultipart()
+            msg["Subject"] = f"【ご請求書】株式会社熊ノ護化研より（{inv.invoice_number}）"
             msg["From"] = smtp_from if smtp_from else "no-reply@kumanomori.jp"
             msg["To"] = customer.email
             
             due_date_str = inv.due_date.strftime('%Y年%m月%d日') if inv.due_date else '末日'
-            bank_html = bank_info.replace(chr(10), '<br>') if bank_info else '※銀行振込先は別途ご案内いたします。'
+            grand_total = int(inv.total_amount * 1.1)
             
             html = f"""
             <html>
@@ -3345,9 +3445,9 @@ async def dispatch_invoices_email(
                         <td style="padding: 10px; border-bottom: 1px solid #eee;">{inv.invoice_number}</td>
                     </tr>
                     <tr>
-                        <th style="text-align: left; padding: 10px; border-bottom: 2px solid #ccc;">ご請求金額</th>
+                        <th style="text-align: left; padding: 10px; border-bottom: 2px solid #ccc;">ご請求金額（税込）</th>
                         <td style="padding: 10px; border-bottom: 1px solid #eee; font-size: 1.2em; font-weight: bold; color: #e74c3c;">
-                            ¥{"{:,.0f}".format(int(inv.total_amount))}
+                            ¥{"{:,.0f}".format(grand_total)}
                         </td>
                     </tr>
                     <tr>
@@ -3356,10 +3456,8 @@ async def dispatch_invoices_email(
                     </tr>
                 </table>
                 
-                <h3 style="margin-top: 30px;">■ お振込先</h3>
-                <div style="background: #f8f9fa; padding: 15px; border-radius: 5px;">
-                    {bank_html}
-                </div>
+                <p style="margin-top: 20px;">詳細は添付の請求書PDFをご確認ください。<br>
+                お振込先情報はPDF内に記載しております。</p>
                 
                 <hr style="margin-top: 40px; border: none; border-top: 1px solid #eee;">
                 <p style="font-size: 0.9em; color: #888;">
@@ -3372,9 +3470,22 @@ async def dispatch_invoices_email(
             """
             
             msg.attach(MIMEText(html, "html"))
+            
+            # PDF生成と添付
+            try:
+                from email.mime.application import MIMEApplication
+                pdf_content = generate_invoice_pdf_content(inv)
+                if pdf_content:
+                    part = MIMEApplication(pdf_content, Name=f"請求書_{inv.invoice_number}.pdf")
+                    part['Content-Disposition'] = f'attachment; filename="請求書_{inv.invoice_number}.pdf"'
+                    msg.attach(part)
+            except Exception as e:
+                print(f"PDF Attachment Error: {e}")
+
             server.send_message(msg)
             
             inv.status = models.InvoiceStatus.ISSUED
+            inv.delivery_status = "SENT"
             success_count += 1
             
         db.commit()
