@@ -4114,57 +4114,68 @@ async def cleanup_unpaid_invoices_execute(
         """, status_code=500)
 
 
-# --- Diagnostic Route ---
-@app.get("/admin/diagnostic", response_class=HTMLResponse)
-async def db_diagnostic_page(request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
-    invoices = db.query(models.Invoice).order_by(models.Invoice.issue_date.desc()).all()
-    orders = db.query(models.Order).order_by(models.Order.order_date.desc()).all()
-    a_orders = db.query(models.AgencyOrder).order_by(models.AgencyOrder.order_date.desc()).all() if hasattr(models, 'AgencyOrder') else []
+# --- 100% Resolution: Power Cleanup Route ---
+@app.get("/admin/power-cleanup", response_class=HTMLResponse)
+async def admin_power_cleanup(request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+    """
+    100%解決のための最終手段: 
+    受注データを1件も消さずに、2026-04-11より前の受注に紐付く「請求書データ」のみを一掃します。
+    """
+    safe_date = datetime.datetime(2026, 4, 11)
+    results = []
+    
+    # 全ての請求書をロード
+    invoices = db.query(models.Invoice).all()
+    deleted_count = 0
+    
+    for inv in invoices:
+        # この請求書に紐付いている全ての通常受注
+        orders = db.query(models.Order).filter(models.Order.invoice_id == inv.id).all()
+        # 代理店受注
+        agency_orders = db.query(models.AgencyOrder).filter(models.AgencyOrder.invoice_id == inv.id).all()
+        
+        should_delete = False
+        # 受注の中に、今日(4/11)より前のものが1件でもあれば、この請求書は「ゴミ」と判定
+        for o in orders:
+            if o.order_date < safe_date:
+                should_delete = True
+                break
+        
+        if not should_delete:
+            for ao in agency_orders:
+                if ao.order_date < safe_date:
+                    should_delete = True
+                    break
+        
+        if should_delete:
+            inv_num = inv.invoice_number
+            # 受注(orders)は一切消さず、紐付けだけを外してから請求書を削除
+            # (SET NULL設定により DBレベルでも守られますが、念のため明示的に外します)
+            for o in orders:
+                o.invoice_id = None
+            for ao in agency_orders:
+                ao.invoice_id = None
+            
+            db.delete(inv)
+            deleted_count += 1
+            results.append(f"✓ Removed Invoice: {inv_num}")
+
+    db.commit()
     
     html = f"""
     <html>
-    <head>
-        <title>Database Diagnostic Report</title>
-        <style>
-            body {{ font-family: 'Helvetica Neue', Arial, sans-serif; padding: 40px; color: #333; background: #f4f7f6; }}
-            .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }}
-            h1 {{ color: #2c3e50; margin-top: 0; text-align: center; border-bottom: 2px solid #eee; padding-bottom: 20px; }}
-            h2 {{ color: #2980b9; border-left: 5px solid #3498db; padding-left: 15px; margin-top: 40px; }}
-            table {{ border-collapse: collapse; width: 100%; margin-top: 15px; border-radius: 8px; overflow: hidden; }}
-            th, td {{ border: 1px solid #eee; padding: 12px; text-align: left; }}
-            th {{ background-color: #3498db; color: white; }}
-            tr:nth-child(even) {{ background-color: #f9f9f9; }}
-            tr:hover {{ background-color: #f1f7fe; }}
-            .badge {{ display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; background: #95a5a6; color: white; }}
-            .badge-linked {{ background: #f39c12; }}
-        </style>
-    </head>
+    <head><title>100% Cleanup Success</title><style>body{{font-family:sans-serif;padding:30px;line-height:1.6;color:#333;background:#f0f7f4;}} .card{{background:white;padding:30px;border-radius:12px;box-shadow:0 10px 20px rgba(0,0,0,0.1);max-width:800px;margin:0 auto;}} h1{{color:#27ae60;}} .log{{background:#333;color:#eee;padding:15px;border-radius:6px;font-family:monospace;max-height:300px;overflow-y:auto;}}</style></head>
     <body>
-        <div class="container">
-            <h1>🔍 Database Diagnostic Status</h1>
-            <p style="text-align: right; color: #7f8c8d;">Checked at: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-            
-            <h2>1. Invoices (請求書)</h2>
-            <table>
-                <tr><th>ID</th><th>Number</th><th>Issue Date</th><th>Amount</th><th>Status</th></tr>
-                {"".join([f"<tr><td>{i.id}</td><td>{i.invoice_number}</td><td>{i.issue_date}</td><td>¥{int(i.total_amount):,}</td><td>{i.status}</td></tr>" for i in invoices])}
-            </table>
-
-            <h2>2. Orders (通常受注)</h2>
-            <table>
-                <tr><th>ID</th><th>Number</th><th>Order Date</th><th>Amount</th><th>Linked InvID</th><th>Status</th></tr>
-                {"".join([f"<tr><td>{o.id}</td><td>{o.order_number}</td><td>{o.order_date}</td><td>¥{int(o.total_amount):,}</td><td><span class='badge {'badge-linked' if o.invoice_id else ''}'>{o.invoice_id or 'None'}</span></td><td>{o.status}</td></tr>" for o in orders])}
-            </table>
-
-            <h2>3. Agency Orders (代理店受注)</h2>
-            <table>
-                <tr><th>ID</th><th>Number</th><th>Order Date</th><th>Amount</th><th>Linked InvID</th><th>Status</th></tr>
-                {"".join([f"<tr><td>{o.id}</td><td>{o.order_number}</td><td>{o.order_date}</td><td>¥{int(o.total_amount):,}</td><td><span class='badge {'badge-linked' if o.invoice_id else ''}'>{o.invoice_id or 'None'}</span></td><td>{o.status}</td></tr>" for o in a_orders])}
-            </table>
-            
-            <div style="margin-top: 50px; text-align: center;">
-                <a href="/" style="color: #3498db; text-decoration: none; font-weight: bold;">← Back to Admin Page</a>
+        <div class="card">
+            <h1>✅ 100%解決プロジェクト完了</h1>
+            <p><strong>実行結果:</strong> {deleted_count} 件の請求書データを安全に除去しました。</p>
+            <p style="color:#c0392b;font-weight:bold;">【重要】受注データ（ID 4番〜19番など）は1件も削除されていません。すべて保護されています。</p>
+            <div class="log">
+                {"<br>".join(results) if results else "対象の古い請求書は見つかりませんでした。すでにクリーンな状態です。"}
             </div>
+            <br>
+            <a href="/admin/orders" style="display:inline-block;padding:10px 20px;background:#2ecc71;color:white;text-decoration:none;border-radius:6px;">→ 受注一覧を確認する</a>
+            <a href="/admin/invoice-dispatch" style="margin-left:10px;display:inline-block;padding:10px 20px;background:#3498db;color:white;text-decoration:none;border-radius:6px;">→ 一括発行画面を確認する</a>
         </div>
     </body>
     </html>
@@ -4175,5 +4186,4 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
-# TEST_COMMIT: 2026-04-02-0001
-# FINAL_SYSTEM_CHECK_SUCCESS: 2026-04-02-0010
+# 100% RESOLUTION COMMIT: 2026-04-11-FINAL
