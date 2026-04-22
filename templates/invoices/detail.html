@@ -116,12 +116,12 @@
                     <a href="/customers" style="color: #e65100; font-weight: bold;">顧客管理</a>から登録してください。</p>
                 </div>
                 {% endif %}
-                <form action="/invoices/{{ invoice.id }}/mark_mailed" method="post">
+                <form action="/invoices/{{ invoice.id }}/mark_mailed" method="post" target="_blank">
                     <button type="submit" class="btn btn-sm btn-outline-secondary" style="width: 100%;">（手動）郵送済みとしてマーク</button>
                 </form>
             {% else %}
                 <!-- 郵送ボタンを強調 -->
-                <form action="/invoices/{{ invoice.id }}/mark_mailed" method="post" style="margin-bottom: 1rem;">
+                <form action="/invoices/{{ invoice.id }}/mark_mailed" method="post" style="margin-bottom: 1rem;" target="_blank">
                     <button type="submit" class="btn btn-lg btn-info" style="width: 100%; height: 60px; font-size: 1.1rem; color: white;">
                         ⎙ 印刷して郵送完了
                     </button>

@@ -1927,8 +1927,9 @@ async def admin_bulk_print_invoices(
     if not invoices:
         return RedirectResponse(url="/admin/invoice-dispatch", status_code=303)
     
-    # 印刷対象を「発行済」に更新
+    # 印刷対象を「発行済」および「郵送処理済」に更新
     for inv in invoices:
+        inv.delivery_status = "MAILED"
         if inv.status == models.InvoiceStatus.UNPAID:
             inv.status = models.InvoiceStatus.ISSUED
     db.commit()
@@ -2414,7 +2415,7 @@ async def mark_mailed(id: int, db: Session = Depends(get_db), user: models.User 
         if invoice.status == models.InvoiceStatus.UNPAID:
             invoice.status = models.InvoiceStatus.ISSUED
         db.commit()
-    return RedirectResponse(url=f"/invoices/{id}", status_code=303)
+    return RedirectResponse(url=f"/invoices/{id}/print", status_code=303)
 
 @app.get("/invoices/{invoice_id}/print", response_class=HTMLResponse)
 async def print_invoice(request: Request, invoice_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
