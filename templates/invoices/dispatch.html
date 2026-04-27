@@ -15,6 +15,40 @@
 </div>
 {% endif %}
 
+{% if request.query_params.get("success_gen") %}
+<div style="background: #e3f2fd; color: #0d47a1; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; border: 1px solid #bbdefb; display: flex; align-items: center; gap: 0.8rem;">
+    <span style="font-size: 1.5rem;">📊</span>
+    <strong>生成・統合完了：</strong> {{ request.query_params.get("success_gen") }}名の顧客に対して合算請求書を生成・更新しました。
+</div>
+{% endif %}
+
+<!-- 手動一括生成セクション -->
+<div class="card" style="margin-bottom: 2rem; border-top: 4px solid #3498db; background: #fff;">
+    <h3 style="margin-top: 0; color: #2c3e50; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+        月次合算請求書の「今すぐ実行・統合」
+    </h3>
+    <p style="font-size: 0.85rem; color: #666; margin-bottom: 1.2rem;">
+        指定した年月の注文を顧客ごとに1枚にまとめます。すでに個別発行済みの請求書がある場合も、自動的に1枚に統合（上書き）し直します。
+    </p>
+    <form action="/admin/invoice-generate-monthly" method="post" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <select name="year" class="form-control" style="width: 100px; padding: 6px;">
+                {% set current_year = 2026 %}
+                <option value="{{ current_year }}" selected>{{ current_year }}年</option>
+                <option value="{{ current_year - 1 }}">{{ current_year - 1 }}年</option>
+            </select>
+            <select name="month" class="form-control" style="width: 80px; padding: 6px;">
+                {% for m in range(1, 13) %}
+                <option value="{{ m }}" {% if m == 4 %}selected{% endif %}>{{ m }}月</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary" style="padding: 8px 20px; font-weight: bold; background: #3498db;">
+            実行する（合算請求書を生成）
+        </button>
+    </form>
+</div>
 <!-- サマリーセクション -->
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
     <div class="card" style="padding: 1rem; border-left: 4px solid #3498db; background: #f8fbff;">

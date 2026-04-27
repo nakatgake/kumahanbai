@@ -347,6 +347,10 @@ async def auth_exception_handler(request: Request, exc: NotAuthenticatedExceptio
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+@app.get("/test-ping")
+async def test_ping():
+    return {"ping": "pong"}
+
 def closing_notification_job():
     """毎日朝8時に実行される、締め日の判定と請求書自動発行（未発行状態で作成）処理"""
     db = SessionLocal()
@@ -2000,6 +2004,168 @@ async def bulk_print_invoices_post(request: Request, db: Session = Depends(get_d
     # POST→Redirect→GET パターンで、ブラウザキャッシュ問題を防ぐ
     ids_param = "&".join([f"invoice_ids={i}" for i in invoice_ids])
     return RedirectResponse(url=f"/invoices/bulk-print?{ids_param}", status_code=303)
+
+@app.post("/admin/invoice-generate-monthly")
+async def admin_generate_monthly_invoices(
+    year: int = Form(...),
+    month: int = Form(...),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    """指定した年月の受注をスキャンし、顧客ごとに1枚の合算請求書を生成・更新する"""
+    import calendar
+    from utils.date_utils import get_effective_date, calculate_payment_date, next_business_day
+    
+    start_date = datetime.date(year, month, 1)
+    last_day = calendar.monthrange(year, month)[1]
+    end_date = datetime.date(year, month, last_day)
+    
+    # 処理対象の顧客（その月に売上がある顧客）を抽出
+    customers = db.query(models.Customer).all()
+    
+    count = 0
+    for cust in customers:
+        # その月の「標準受注」と「代理店受注」を取得
+        # ※すでに請求書があるものも含めて、その月の全データを対象にする（統合のため）
+        standard_orders = db.query(models.Order).join(models.Quotation).filter(
+            models.Quotation.customer_id == cust.id,
+            models.Order.order_date >= datetime.datetime.combine(start_date, datetime.time.min),
+            models.Order.order_date <= datetime.datetime.combine(end_date, datetime.time.max)
+        ).all()
+        
+        agency_orders = db.query(models.AgencyOrder).filter(
+            models.AgencyOrder.customer_id == cust.id,
+            models.AgencyOrder.order_date >= datetime.datetime.combine(start_date, datetime.time.min),
+            models.AgencyOrder.order_date <= datetime.datetime.combine(end_date, datetime.time.max),
+            models.AgencyOrder.status == "処理済み"
+        ).all()
+        
+        if not standard_orders and not agency_orders:
+            continue
+            
+        # ターゲットとなる合算請求書番号 (INV-YYYYMM-CUSTID)
+        monthly_inv_num = f"INV-{year}{month:02d}-{cust.id:04d}"
+        
+        # 既存の合算請求書があるか確認
+        invoice = db.query(models.Invoice).filter_by(invoice_number=monthly_inv_num).first()
+        
+        # もし「入金済み」なら、会計上の安全のためスキップ
+        if invoice and invoice.status == models.InvoiceStatus.PAID:
+            continue
+
+        # バラバラに発行された「他の請求書」を特定して解体する（統合処理）
+        # ※月次合算用以外の請求書に紐付いている注文を救い出す
+        other_invoices = set()
+        for o in standard_orders:
+            if o.invoice_id and (not invoice or o.invoice_id != invoice.id):
+                other_inv = db.query(models.Invoice).get(o.invoice_id)
+                if other_inv and other_inv.status != models.InvoiceStatus.PAID:
+                    other_invoices.add(other_inv)
+        for ao in agency_orders:
+            if ao.invoice_id and (not invoice or ao.invoice_id != invoice.id):
+                other_inv = db.query(models.Invoice).get(ao.invoice_id)
+                if other_inv and other_inv.status != models.InvoiceStatus.PAID:
+                    other_invoices.add(other_inv)
+        
+        # 解体実行: 他の請求書から紐付けを解除し、その請求書を削除
+        for old_inv in other_invoices:
+            # 紐付いていた他の受注をすべて一旦フリーにする
+            for o in old_inv.orders:
+                o.invoice_id = None
+            for ao in db.query(models.AgencyOrder).filter_by(invoice_id=old_inv.id).all():
+                ao.invoice_id = None
+            db.delete(old_inv)
+        
+        db.flush()
+
+        # 支払期限の計算 (月末を締め日と仮定して算出)
+        due_date_raw = calculate_payment_date(end_date, cust.payment_term_months or 1, cust.payment_day or 31)
+        due_date = next_business_day(due_date_raw)
+        
+        # 合計金額の再算出
+        total_standard = sum(int(o.total_amount) for o in standard_orders)
+        total_agency = sum(int(o.total_amount) for o in agency_orders)
+        grand_total_excl_tax = total_standard + total_agency
+        
+        if not invoice:
+            # 新規作成
+            invoice = models.Invoice(
+                customer_id=cust.id,
+                invoice_number=monthly_inv_num,
+                issue_date=datetime.datetime.combine(end_date, datetime.time.min),
+                due_date=datetime.datetime.combine(due_date, datetime.time.min),
+                total_amount=float(grand_total_excl_tax),
+                status=models.InvoiceStatus.UNPAID,
+                delivery_status="UNSENT",
+                memo=f"{year}年{month}月分 合算請求書（手動実行による生成/統合）"
+            )
+            db.add(invoice)
+            db.flush()
+        else:
+            # 更新
+            invoice.total_amount = float(grand_total_excl_tax)
+            invoice.issue_date = datetime.datetime.combine(end_date, datetime.time.min)
+            invoice.due_date = datetime.datetime.combine(due_date, datetime.time.min)
+            invoice.memo = f"{year}年{month}月分 合算請求書（再実行による更新）"
+
+        # 注文を紐付け直す
+        for o in standard_orders:
+            o.invoice_id = invoice.id
+        
+        # 代理店分（シャドウ受注）の再生成
+        # 既存のシャドウがあれば削除
+        existing_shadows = db.query(models.Order).filter(
+            models.Order.invoice_id == invoice.id,
+            models.Order.order_number.contains("SHADOW")
+        ).all()
+        for s in existing_shadows:
+            if s.quotation:
+                db.query(models.QuotationItem).filter_by(quotation_id=s.quotation.id).delete()
+                db.delete(s.quotation)
+            db.delete(s)
+        db.flush()
+
+        if agency_orders:
+            shadow_quote = models.Quotation(
+                customer_id=cust.id,
+                quote_number=f"Q-SHADOW-{monthly_inv_num}",
+                issue_date=end_date,
+                expiry_date=end_date + datetime.timedelta(days=30),
+                total_amount=float(total_agency),
+                status=models.QuoteStatus.ORDERED,
+                memo=f"代理店発注集計分 ({len(agency_orders)}件)"
+            )
+            db.add(shadow_quote)
+            db.flush()
+
+            for ao in agency_orders:
+                ao.invoice_id = invoice.id
+                for item in ao.items:
+                    qi = models.QuotationItem(
+                        quotation_id=shadow_quote.id,
+                        product_id=item.product_id,
+                        description=f"[{ao.order_number}] {item.product_name}",
+                        quantity=item.quantity,
+                        unit_price=item.unit_price,
+                        subtotal=item.subtotal
+                    )
+                    db.add(qi)
+            
+            shadow_order = models.Order(
+                quotation_id=shadow_quote.id,
+                order_number=f"ORD-SHADOW-{monthly_inv_num}",
+                order_date=end_date,
+                invoice_id=invoice.id,
+                total_amount=float(total_agency),
+                status=models.OrderStatus.COMPLETED,
+                memo="代理店発注合算シャドウ"
+            )
+            db.add(shadow_order)
+            
+        count += 1
+    
+    db.commit()
+    return RedirectResponse(url=f"/admin/invoice-dispatch?success_gen={count}", status_code=303)
 
 
 @app.post("/orders/{order_id}/invoice")
@@ -3792,6 +3958,8 @@ async def dispatch_invoices_email(
         if server:
             server.quit()
             
+    return RedirectResponse(url=f"/admin/invoice-dispatch?success={success_count}", status_code=303)
+
     return RedirectResponse(url=f"/admin/invoice-dispatch?success={success_count}", status_code=303)
     
 
