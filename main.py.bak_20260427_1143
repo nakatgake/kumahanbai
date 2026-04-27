@@ -246,47 +246,6 @@ def migrate_db():
 
 migrate_db()
 
-# --- Helper Functions (ロジック共通化) ---
-def get_system_setting(db: Session, key: str, default: str) -> str:
-    """システム設定から値を取得。存在しない場合はデフォルト値を返す"""
-    setting = db.query(models.SystemSetting).filter_by(key=key).first()
-    return setting.value if setting else default
-
-def calculate_spray_price(product, case_count: int, rank: models.CustomerRank) -> int:
-    """
-    熊スプレーのケース数に応じた動的価格計算
-    ランク価格よりもケース数割引を優先する
-    """
-    if case_count >= 30:
-        price = product.price_a
-    elif case_count >= 25:
-        price = product.price_b
-    elif case_count >= 10:
-        price = product.price_c
-    elif case_count >= 5:
-        price = product.price_d
-    else:
-        price = product.price_e
-    
-    # 価格が設定されていない(0)の場合はランク価格を適用
-    if not price or price <= 0:
-        price = get_price_for_rank(product, rank)
-    
-    return int(price)
-
-def get_price_for_rank(product, rank: models.CustomerRank) -> int:
-    """顧客ランクに応じた標準価格を取得"""
-    rank_price_map = {
-        models.CustomerRank.RETAIL: product.price_retail,
-        models.CustomerRank.RANK_A: product.price_a,
-        models.CustomerRank.RANK_B: product.price_b,
-        models.CustomerRank.RANK_C: product.price_c,
-        models.CustomerRank.RANK_D: product.price_d,
-        models.CustomerRank.RANK_E: product.price_e,
-    }
-    price = rank_price_map.get(rank, product.price_retail)
-    return int(price if price and price > 0 else product.price_retail)
-
 # --- Security Configuration ---
 SECRET_KEY = "kumanogo-secret-key-12345" # 本番環境では環境変数などで管理すべき
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
@@ -392,15 +351,10 @@ def closing_notification_job():
                 due_date_raw = calculate_payment_date(today, cust.payment_term_months or 1, cust.payment_day or 31)
                 due_date = next_business_day(due_date_raw)
                 
-                # 合計金額の算出 (整数で計算し、float誤差を防止)
-                total_standard = sum(int(o.total_amount) for o in standard_orders)
-                total_agency = sum(int(o.total_amount) for o in agency_orders)
-                grand_total_excl_tax = total_standard + total_agency
-                
-                # 消費税計算 (10%固定、小数点以下切り捨て)
-                TAX_RATE = 0.1
-                tax_amount = int(grand_total_excl_tax * TAX_RATE)
-                grand_total_incl_tax = grand_total_excl_tax + tax_amount
+                # 合計金額の算出
+                total_standard = sum(o.total_amount for o in standard_orders)
+                total_agency = sum(o.total_amount for o in agency_orders)
+                grand_total = total_standard + total_agency
 
                 # 請求書の作成 (初期状態は「未入金」かつ「未発送/未メール」)
                 invoice = models.Invoice(
@@ -408,7 +362,7 @@ def closing_notification_job():
                     invoice_number=inv_num,
                     issue_date=datetime.datetime.combine(today, datetime.time.min),
                     due_date=datetime.datetime.combine(due_date, datetime.time.min),
-                    total_amount=float(grand_total_excl_tax), # DBカラムがFloatのためキャスト
+                    total_amount=float(grand_total),
                     status=models.InvoiceStatus.UNPAID,
                     delivery_status="UNSENT",
                     memo=f"{today.strftime('%m/%d')}締め 合算集計（自動生成）"
@@ -470,7 +424,7 @@ def closing_notification_job():
 
 ■ 顧客名：{cust.company or cust.name}
 ■ 合算内容：合計 {len(standard_orders) + len(agency_orders)} 件の受注を統合
-■ 合計請求額：¥{'{:,.0f}'.format(grand_total_incl_tax)} (税込)
+■ 合計請求額：¥{'{:,.0f}'.format(int(grand_total * 1.1))} (税込)
 ■ 対象受注番号：{', '.join(order_numbers)}
 
 【重要：確認のお願い】
@@ -2340,37 +2294,16 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
             pdf.set_font("Japanese" if font_found else "helvetica", "", 9)
             if order.quotation:
                 for item in order.quotation.items:
-                    # 品名の長さから必要な行の高さを計算 (fpdf2のmulti_cellをドライラン)
-                    line_height = 7
-                    desc_width = 90
-                    # テキストを行に分割
-                    lines = pdf.multi_cell(desc_width, line_height, item.description, dry_run=True, output="LINES")
-                    h = max(line_height, len(lines) * line_height)
-
-                    # 改ページチェック
-                    if pdf.get_y() + h > page_bottom_limit:
+                    if pdf.get_y() > page_bottom_limit:
                         pdf.add_page()
                         draw_table_header(pdf)
 
-                    # 描画開始位置を保持
-                    curr_x = pdf.get_x()
-                    curr_y = pdf.get_y()
-
-                    # 各列を描画 (MultiCellに合わせて高さを揃える)
-                    pdf.cell(10, h, str(row_idx), border=1, align="C")
-                    
-                    # 品名列 (MultiCell)
-                    pdf.set_xy(curr_x + 10, curr_y)
-                    pdf.multi_cell(desc_width, line_height, item.description, border=1, align="L")
-                    
-                    # 残りの列を右側に配置
-                    pdf.set_xy(curr_x + 100, curr_y)
-                    pdf.cell(20, h, f"{item.quantity}", border=1, align="R")
-                    pdf.cell(35, h, f"{int(item.unit_price):,.0f}", border=1, align="R")
-                    pdf.cell(35, h, f"{int(item.subtotal):,.0f}", border=1, align="R")
-                    
-                    # 次の行へ移動
-                    pdf.set_xy(curr_x, curr_y + h)
+                    pdf.cell(10, 7, str(row_idx), border=1, align="C")
+                    pdf.cell(90, 7, item.description, border=1)
+                    pdf.cell(20, 7, f"{item.quantity}", border=1, align="R")
+                    pdf.cell(35, 7, f"{item.unit_price:,.0f}", border=1, align="R")
+                    pdf.cell(35, 7, f"{item.subtotal:,.0f}", border=1, align="R")
+                    pdf.ln()
                     row_idx += 1
 
         while row_idx <= 8:
@@ -2824,6 +2757,19 @@ async def get_active_agency(request: Request, db: Session = Depends(get_db)):
         raise NotAgencyAuthenticatedException()
     return agency
 
+def get_price_for_rank(product, rank):
+    """顧客ランクに応じた価格を取得"""
+    rank_price_map = {
+        models.CustomerRank.RETAIL: product.price_retail,
+        models.CustomerRank.RANK_A: product.price_a,
+        models.CustomerRank.RANK_B: product.price_b,
+        models.CustomerRank.RANK_C: product.price_c,
+        models.CustomerRank.RANK_D: product.price_d,
+        models.CustomerRank.RANK_E: product.price_e,
+    }
+    price = rank_price_map.get(rank, product.price_retail)
+    return price if price and price > 0 else product.price_retail
+
 # --- Agency Login ---
 @app.get("/agency/login", response_class=HTMLResponse)
 async def agency_login_page(request: Request):
@@ -3040,11 +2986,16 @@ async def agency_create_order(
                 case_count = qty  # 入力値はケース数
                 actual_qty = case_count * CASE_SIZE  # 本数に変換
                 # ケース数に応じたランク価格を適用
-            if is_spray:
-                case_count = qty  # 入力値はケース数
-                actual_qty = case_count * CASE_SIZE  # 本数に変換
-                # 共通ロジックを使用して価格計算
-                price = calculate_spray_price(product, case_count, agency.rank)
+                if case_count >= 30:
+                    price = product.price_a or get_price_for_rank(product, agency.rank)
+                elif case_count >= 25:
+                    price = product.price_b or get_price_for_rank(product, agency.rank)
+                elif case_count >= 10:
+                    price = product.price_c or get_price_for_rank(product, agency.rank)
+                elif case_count >= 5:
+                    price = product.price_d or get_price_for_rank(product, agency.rank)
+                else:
+                    price = product.price_e or get_price_for_rank(product, agency.rank)
             else:
                 actual_qty = qty
                 price = get_price_for_rank(product, agency.rank)
@@ -3063,21 +3014,14 @@ async def agency_create_order(
             total += subtotal
         
         product_total_tax_excl = total
+        product_total_tax_incl = int(product_total_tax_excl * 1.1)
         
-        # 設定から定数を取得
-        TAX_RATE = float(get_system_setting(db, "tax_rate", "0.1"))
-        MIN_ORDER = int(get_system_setting(db, "agency_min_order_amount", "10000"))
-        SHIPPING_THRESHOLD = int(get_system_setting(db, "shipping_fee_free_threshold", "30000"))
-        SHIPPING_FEE = int(get_system_setting(db, "shipping_fee", "1200"))
-
-        product_total_tax_incl = int(product_total_tax_excl * (1 + TAX_RATE))
-        
-        if product_total_tax_incl <= MIN_ORDER:
-            return HTMLResponse(content=f"<script>alert('ご注文合計（税込）が{MIN_ORDER:,.0f}円以下のため、発注を承ることができません。商品を追加してください。'); history.back();</script>", status_code=400)
+        if product_total_tax_incl <= 10000:
+            return HTMLResponse(content="<script>alert('ご注文合計（税込）が10,000円以下のため、発注を承ることができません。商品を追加してください。'); history.back();</script>", status_code=400)
             
         shipping_fee = 0
-        if product_total_tax_incl < SHIPPING_THRESHOLD:
-            shipping_fee = SHIPPING_FEE
+        if product_total_tax_incl < 30000:
+            shipping_fee = 1200
             # 送料明細の追加
             shipping_item = models.AgencyOrderItem(
                 agency_order_id=agency_order.id,
