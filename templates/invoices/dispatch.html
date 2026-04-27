@@ -48,7 +48,32 @@
 
 <div class="card" style="margin-bottom: 2rem;">
     <h3 style="border-bottom: 2px solid #3498db; padding-bottom: 0.5rem; color: #2c3e50;">📧 メール送信対象 ({{ email_invoices|length }}件)</h3>
-    <p style="font-size: 0.9rem; color: #555;">以下の請求書は、顧客設定で「メール」が選択されています。PDF化して一括送信します。</p>
+    
+    <div style="background: #fff9e6; border: 1px solid #ffeeba; padding: 12px; border-radius: 8px; margin-bottom: 1.5rem; font-size: 0.9rem;">
+        <details>
+            <summary style="cursor: pointer; font-weight: bold; color: #856404;">📝 送信されるメールの内容を確認する</summary>
+            <div style="margin-top: 10px; background: white; padding: 15px; border-radius: 4px; border: 1px solid #ddd; color: #333;">
+                <p><strong>件名:</strong> 【ご請求書】株式会社熊ノ護化研より（請求書番号）</p>
+                <hr>
+                <div style="font-family: sans-serif;">
+                    <h3>ご請求のご案内</h3>
+                    <p>◯◯◯◯ 様</p>
+                    <p>平素は格別のお引き立てをいただき、厚く御礼申し上げます。<br>
+                    以下の通りご請求申し上げますので、ご確認のほどよろしくお願いいたします。</p>
+                    <table style="width: 100%; max-width: 400px; border-collapse: collapse; margin: 10px 0; border: 1px solid #eee;">
+                        <tr><th style="text-align: left; padding: 8px; background: #f9f9f9;">請求書番号</th><td style="padding: 8px;">INV-XXXXXX</td></tr>
+                        <tr><th style="text-align: left; padding: 8px; background: #f9f9f9;">ご請求金額（税込）</th><td style="padding: 8px; font-weight: bold; color: #e74c3c;">¥XX,XXX</td></tr>
+                        <tr><th style="text-align: left; padding: 8px; background: #f9f9f9;">お支払期限</th><td style="padding: 8px;">XXXX年XX月XX日</td></tr>
+                    </table>
+                    <p>詳細は添付の請求書PDFをご確認ください。<br>
+                    お振込先情報はPDF内に記載しております。</p>
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <p style="font-size: 0.9rem; color: #555;">以下の請求書は、顧客設定で「メール」が選択されています。PDF化して一括送信します。<br>
+    <span style="color: #e74c3c;">※請求書番号をクリックすると、送信前に内容を確認できます。</span></p>
     
     {% if email_invoices %}
     <form action="/admin/invoice-dispatch/email" method="post" id="email-dispatch-form">
@@ -81,7 +106,12 @@
                 {% set is_auto = 'true' if inv.memo and '自動生成' in inv.memo else 'false' %}
                 <tr>
                     <td><input type="checkbox" name="invoice_ids" value="{{ inv.id }}" class="check-email" data-closing-day="{{ customer.closing_day or 0 }}" data-is-auto="{{ is_auto }}"></td>
-                    <td>{{ inv.invoice_number }}</td>
+                    <td>
+                        <a href="/invoices/{{ inv.id }}" target="_blank" style="text-decoration: none; color: #3498db; font-weight: bold; display: flex; align-items: center; gap: 4px;">
+                            {{ inv.invoice_number }}
+                            <span style="font-size: 0.8rem; font-weight: normal; color: #999;">🔍確認</span>
+                        </a>
+                    </td>
                     <td>
                         <div style="font-weight: bold;">
                             {% if customer %}
@@ -155,7 +185,12 @@
                 {% set is_auto = 'true' if inv.memo and '自動生成' in inv.memo else 'false' %}
                 <tr>
                     <td><input type="checkbox" name="invoice_ids" value="{{ inv.id }}" class="check-postal" data-closing-day="{{ customer.closing_day or 0 }}" data-is-auto="{{ is_auto }}"></td>
-                    <td>{{ inv.invoice_number }}</td>
+                    <td>
+                        <a href="/invoices/{{ inv.id }}" target="_blank" style="text-decoration: none; color: #27ae60; font-weight: bold; display: flex; align-items: center; gap: 4px;">
+                            {{ inv.invoice_number }}
+                            <span style="font-size: 0.8rem; font-weight: normal; color: #999;">🔍確認</span>
+                        </a>
+                    </td>
                     <td>
                         <div style="font-weight: bold;">
                             {% if customer %}
