@@ -2140,7 +2140,6 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
     """請求書のPDFデータを生成してバイト列で返す。エラー時はNoneを返す"""
     from fpdf import FPDF
     import io
-    import logging
     import os
 
     try:
@@ -2172,7 +2171,22 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
         if not font_found:
             pdf.set_font("helvetica", size=10)
 
-        # --- ヘッダー領域 ---
+        # --- 明細テーブルヘッダー描画用の関数 ---
+        def draw_table_header(pdf_obj):
+            pdf_obj.set_fill_color(*primary_color)
+            pdf_obj.set_text_color(255, 255, 255)
+            pdf_obj.set_font("Japanese" if font_found else "helvetica", "", 9)
+            pdf_obj.cell(10, 8, "No", border=1, align="C", fill=True)
+            pdf_obj.cell(90, 8, "品名 / 摘要", border=1, align="C", fill=True)
+            pdf_obj.cell(20, 8, "数量", border=1, align="C", fill=True)
+            pdf_obj.cell(35, 8, "単価（円）", border=1, align="C", fill=True)
+            pdf_obj.cell(35, 8, "金額（円）", border=1, align="C", fill=True)
+            pdf_obj.ln()
+            pdf_obj.set_text_color(51, 51, 51)
+            pdf_obj.set_font("Japanese" if font_found else "helvetica", "", 9)
+
+        # --- 1ページ目のヘッダー・宛先・発行元情報 ---
+        # タイトル
         pdf.set_font("Japanese" if font_found else "helvetica", "", 24)
         pdf.set_text_color(*primary_color)
         pdf.cell(100, 15, "請  求  書", ln=False)
@@ -2193,7 +2207,7 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
         
         pdf.ln(10)
 
-        # --- 宛先と発行元 ---
+        # 宛先と発行元
         customer = invoice.customer if invoice.customer else (invoice.orders[0].quotation.customer if invoice.orders else None)
         
         # 左側：宛先
@@ -2213,8 +2227,6 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
         
         # 右側：発行元
         issuer_x = 130
-        
-        # 電子印影の配置 (テキストの前に配置することで、テキスが上に重なるようにする)
         if os.path.exists("static/images/seal.png"):
             pdf.image("static/images/seal.png", x=issuer_x + 35, y=38, w=22)
 
@@ -2259,23 +2271,17 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
         pdf.ln(8)
 
         # --- 明細テーブル ---
-        pdf.set_fill_color(*primary_color)
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Japanese" if font_found else "helvetica", "", 9)
-        
-        # テーブルヘッダー
-        pdf.cell(10, 8, "No", border=1, align="C", fill=True)
-        pdf.cell(90, 8, "品名 / 摘要", border=1, align="C", fill=True)
-        pdf.cell(20, 8, "数量", border=1, align="C", fill=True)
-        pdf.cell(35, 8, "単価（円）", border=1, align="C", fill=True)
-        pdf.cell(35, 8, "金額（円）", border=1, align="C", fill=True)
-        pdf.ln()
-
-        pdf.set_text_color(51, 51, 51)
-        pdf.set_font("Japanese" if font_found else "helvetica", "", 9)
+        draw_table_header(pdf)
         
         row_idx = 1
+        page_bottom_limit = 270
+        
         for order in invoice.orders:
+            # 改ページチェック
+            if pdf.get_y() > page_bottom_limit - 15:
+                pdf.add_page()
+                draw_table_header(pdf)
+
             # 受注区切り行
             pdf.set_fill_color(240, 244, 248)
             pdf.set_font("Japanese" if font_found else "helvetica", "", 8)
@@ -2288,6 +2294,10 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
             pdf.set_font("Japanese" if font_found else "helvetica", "", 9)
             if order.quotation:
                 for item in order.quotation.items:
+                    if pdf.get_y() > page_bottom_limit:
+                        pdf.add_page()
+                        draw_table_header(pdf)
+
                     pdf.cell(10, 7, str(row_idx), border=1, align="C")
                     pdf.cell(90, 7, item.description, border=1)
                     pdf.cell(20, 7, f"{item.quantity}", border=1, align="R")
@@ -2296,8 +2306,10 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
                     pdf.ln()
                     row_idx += 1
 
-        # 空行の埋め合わせ（最低10行程度）
         while row_idx <= 8:
+            if pdf.get_y() > page_bottom_limit:
+                pdf.add_page()
+                draw_table_header(pdf)
             pdf.cell(10, 7, str(row_idx), border=1, align="C")
             pdf.cell(90, 7, "", border=1)
             pdf.cell(20, 7, "", border=1)
@@ -2309,6 +2321,11 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
         # --- 集計セクション ---
         pdf.ln(2)
         summary_x = 130
+        if pdf.get_y() > page_bottom_limit - 30: # 集計が入り切らない場合は次ページへ
+            pdf.add_page()
+            pdf.ln(10)
+
+        pdf.set_font("Japanese" if font_found else "helvetica", "", 9)
         pdf.set_x(summary_x)
         pdf.cell(35, 6, "小計（税抜）", border=0, align="R")
         pdf.cell(35, 6, f"¥{int(invoice.total_amount):,.0f}", border=0, align="R", ln=True)
@@ -2328,6 +2345,10 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
 
         # --- お振込先 ---
         pdf.ln(10)
+        if pdf.get_y() > page_bottom_limit - 20:
+            pdf.add_page()
+            pdf.ln(10)
+            
         pdf.set_draw_color(221, 221, 221)
         pdf.set_line_width(0.2)
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
@@ -2353,7 +2374,6 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
         notes = "【備考】\n・振込手数料はお客様負担にてお願い申し上げます。\n・上記見積に基づき、ご請求申し上げます。\n・上記金額には消費税10%が含まれております。"
         pdf.multi_cell(0, 4, notes)
 
-        # バイト列として出力
         return pdf.output()
     except Exception as e:
         import traceback
