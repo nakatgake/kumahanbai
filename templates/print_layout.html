@@ -31,32 +31,56 @@
             width: 210mm;
             min-height: 297mm;
             background: white;
-            padding: 15mm; /* 20mmから15mmに削減 */
+            padding: 15mm;
             box-shadow: 0 0 15px rgba(0,0,0,0.1);
             position: relative;
+            margin: 20px auto; /* 画面上で中央に配置 */
+        }
+        /* 画面上でのA4切れ目ガイド（オプション） */
+        .page::after {
+            content: "";
+            position: absolute;
+            top: 297mm;
+            left: 0;
+            width: 100%;
+            border-top: 1px dashed #eee;
+            display: block;
         }
         @page { 
             size: A4; 
             margin: 0; 
         }
         @media print {
-            body { background: none; padding: 0; }
+            body { background: none; padding: 0; margin: 0; }
             .page { 
                 box-shadow: none; 
                 margin: 0; 
                 width: 210mm;
-                height: auto; /* 固定高さを解除 */
+                height: auto;
                 min-height: 297mm;
                 box-sizing: border-box;
                 padding: 10mm;
-                overflow: visible; /* 非表示設定を解除 */
+                overflow: visible;
             }
+            .page::after { display: none; } /* 印刷時はガイド線を消す */
             .print-btn-container { display: none !important; }
             
             /* 改ページ制御 */
-            .items-table tr { page-break-inside: auto; }
-            .items-table td { page-break-inside: avoid; }
-            .summary-wrapper, .main-flex, .grand-total-box, .notes { page-break-inside: avoid; }
+            table.items-table {
+                width: 100%;
+                border-collapse: collapse;
+                page-break-inside: auto;
+            }
+            table.items-table thead {
+                display: table-header-group; /* ヘッダーを各ページで繰り返す */
+            }
+            table.items-table tr {
+                page-break-inside: avoid; /* 行の途中で改ページさせない */
+                page-break-after: auto;
+            }
+            .summary-wrapper, .main-flex, .grand-total-box, .notes {
+                page-break-inside: avoid;
+            }
         }
 
         /* Header Layout */
