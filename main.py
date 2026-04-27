@@ -2949,6 +2949,7 @@ async def agency_new_order(
     products = db.query(models.Product).order_by(models.Product.id.desc()).all()
     products_with_price = []
     for p in products:
+        # 表示用価格は一旦ランク価格（1ケースまたは1本分）を表示
         price = get_price_for_rank(p, agency.rank)
         # 熊スプレーケース単位発注導入対象：
         # 「熊スプレー」を含み、「ホルダ」「練習」を含まないもののみ case単位
