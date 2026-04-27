@@ -118,9 +118,16 @@ table {
 }
 
 th, td {
-    padding: 1rem;
+    padding: 0.75rem 1rem;
     text-align: left;
     border-bottom: 1px solid #eee;
+}
+
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: 1.5rem;
 }
 
 th {
@@ -188,6 +195,7 @@ input:focus {
     padding: 0.4rem 0.8rem;
     font-size: 0.85rem;
     border-radius: 4px;
+    white-space: nowrap;
 }
 
 .btn-primary { background: var(--accent); color: white; }
@@ -388,15 +396,7 @@ input:focus {
         justify-content: center;
     }
 
-    /* Table Responsiveness */
-    .table-responsive {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-        margin-bottom: 1rem;
-        border-radius: 8px;
-        border: 1px solid #eee;
-    }
-
+    /* Table Responsiveness handled globally */
     table {
         min-width: 600px; /* テーブルが潰れないように最小幅を確保 */
     }
