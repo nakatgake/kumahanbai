@@ -44,13 +44,19 @@
             .page { 
                 box-shadow: none; 
                 margin: 0; 
-                width: 210mm; /* 固定サイズ指定 */
-                height: 296mm; /* A4高さを固定してはみ出さないように */
+                width: 210mm;
+                height: auto; /* 固定高さを解除 */
+                min-height: 297mm;
                 box-sizing: border-box;
-                padding: 10mm; /* 余白を削る */
-                overflow: hidden; /* はみ出した分を隠す */
+                padding: 10mm;
+                overflow: visible; /* 非表示設定を解除 */
             }
             .print-btn-container { display: none !important; }
+            
+            /* 改ページ制御 */
+            .items-table tr { page-break-inside: auto; }
+            .items-table td { page-break-inside: avoid; }
+            .summary-wrapper, .main-flex, .grand-total-box, .notes { page-break-inside: avoid; }
         }
 
         /* Header Layout */
