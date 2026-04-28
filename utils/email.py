@@ -76,3 +76,16 @@ def send_notification(
         return False
     finally:
         db.close()
+
+
+def send_admin_notification(subject: str, body: str) -> bool:
+    """管理者通知メールを送信する。送信先はシステム設定の notification_email。
+    send_admin_email_sync の代替として、セッション管理を内部で完結させる。
+    """
+    db = SessionLocal()
+    try:
+        notif_setting = db.query(SystemSetting).filter(SystemSetting.key == "notification_email").first()
+        target = (notif_setting.value if notif_setting and notif_setting.value else None) or "info@kumanomorikaken.co.jp"
+    finally:
+        db.close()
+    return send_notification(subject=subject, body=body, to=[target])

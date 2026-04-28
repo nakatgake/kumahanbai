@@ -30,7 +30,7 @@ except ImportError:
     HAS_SCHEDULER = False
 
 from email.message import EmailMessage
-from utils.email import send_notification
+from utils.email import send_notification, send_admin_notification
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
@@ -50,6 +50,9 @@ def update_product_stock(db: Session, product_id: int, location_id: int, quantit
         if not from_stock:
             from_stock = models.ProductLocationStock(product_id=product_id, location_id=from_location_id, stock_quantity=0)
             db.add(from_stock)
+        # 在庫マイナス防止チェック
+        if from_stock.stock_quantity < quantity:
+            raise ValueError(f"在庫不足: 移動元（拠点ID:{from_location_id}）の在庫が不足しています（現在庫: {from_stock.stock_quantity}、移動要求: {quantity}）")
         from_stock.stock_quantity -= quantity
         
         # 移動先へプラス
@@ -77,6 +80,9 @@ def update_product_stock(db: Session, product_id: int, location_id: int, quantit
             stock.stock_quantity += quantity
             movement = models.StockMovement(product_id=product_id, to_location_id=location_id, quantity=quantity, type=move_type, reason=reason)
         else: # OUTBOUND
+            # 在庫マイナス防止チェック
+            if stock.stock_quantity < quantity:
+                raise ValueError(f"在庫不足: 出庫数量が現在庫を超えています（現在庫: {stock.stock_quantity}、出庫要求: {quantity}）")
             stock.stock_quantity -= quantity
             movement = models.StockMovement(product_id=product_id, from_location_id=location_id, quantity=quantity, type=move_type, reason=reason)
         db.add(movement)
@@ -365,17 +371,20 @@ def closing_notification_job():
             # 今日が締め日の場合のみ処理実行
             if is_closing_day(today, cust.closing_day):
                 # 1. 未請求の標準受注を抽出 (出荷済み or 完了 のみ)
-                # 100%解決のため、本日（2026-04-11）より前のデータは絶対に自動発行しない
-                safe_date = datetime.datetime(2026, 4, 11)
+                # システム設定から集計開始日を取得（管理画面の billing_start_date キーで変更可能）
+                safe_date_str = get_system_setting(db, "billing_start_date", "2020-01-01")
+                try:
+                    safe_date = datetime.datetime.strptime(safe_date_str, "%Y-%m-%d")
+                except ValueError:
+                    safe_date = datetime.datetime(2020, 1, 1)
                 standard_orders = db.query(models.Order).join(models.Quotation).filter(
                     models.Quotation.customer_id == cust.id,
                     models.Order.invoice_id == None,
                     models.Order.order_date >= safe_date,
                     models.Order.status.in_([models.OrderStatus.SHIPPED, models.OrderStatus.COMPLETED])
                 ).all()
-                
+
                 # 2. 未請求の代理店受注を抽出 (処理済みのみ)
-                # 100%解決のため、テスト期間中（2026-04-10以前）のデータは絶対に拾わない
                 agency_orders = db.query(models.AgencyOrder).filter(
                     models.AgencyOrder.customer_id == cust.id,
                     models.AgencyOrder.status == "処理済み",
@@ -488,7 +497,7 @@ def closing_notification_job():
                     target_email = s_dict.get("notification_email") or "info@kumanomorikaken.co.jp"
                     
                     # 管理者へメール通知を実行
-                    send_admin_email_sync(db, subject, body)
+                    send_admin_notification(subject, body)
                 except Exception as email_err:
                     print(f"WARNING: Email notification failed: {str(email_err)}")
 
@@ -2913,52 +2922,9 @@ async def send_order_notification_email(order: models.AgencyOrder, db: Session):
 詳細は管理画面の「代理店発注」ページ、または以下の通知一覧よりご確認ください。
 https://app.kumanomorikaken.co.jp/admin/notifications
 """
-    send_admin_email_sync(db, subject, content)
+    send_admin_notification(subject, content)
 
-def send_admin_email_sync(db: Session, subject: str, content: str):
-    """管理者へメール通知を送信（同期版）"""
-    try:
-        settings = db.query(models.SystemSetting).all()
-        s = {s.key: s.value for s in settings}
-        target = s.get("notification_email") or "info@kumanomorikaken.co.jp"
-        
-        if not s.get("smtp_host"):
-            print(f"DEBUG: Email notification skipped (No SMTP): {subject}")
-            return
-
-        msg = EmailMessage()
-        msg.set_content(content)
-        msg['Subject'] = subject
-        msg['From'] = s.get("smtp_from")
-        msg['To'] = target
-
-        smtp_host = s.get("smtp_host")
-        smtp_port_val = s.get("smtp_port") or "587"
-        try:
-            smtp_port = int(smtp_port_val)
-        except ValueError:
-            smtp_port = 587
-            
-        smtp_user = s.get("smtp_user")
-        smtp_pass = s.get("smtp_pass")
-
-        import ssl
-        context = ssl.create_default_context()
-        if smtp_port == 465:
-            with smtplib.SMTP_SSL(str(smtp_host), smtp_port, timeout=30, context=context) as server:
-                if smtp_user and smtp_pass:
-                    server.login(smtp_user, smtp_pass)
-                server.send_message(msg)
-        else:
-            with smtplib.SMTP(str(smtp_host), smtp_port, timeout=30) as server:
-                if smtp_port == 587:
-                    server.starttls(context=context)
-                if smtp_user and smtp_pass:
-                    server.login(smtp_user, smtp_pass)
-                server.send_message(msg)
-        print(f"INFO: Admin Email sent to {target}: {subject}")
-    except Exception as e:
-        print(f"ERROR: Failed to send admin email: {e}")
+# send_admin_email_sync は utils/email.py の send_admin_notification に統合されました
 
 agency_serializer = URLSafeSerializer(SECRET_KEY + "-agency")
 
@@ -3206,11 +3172,6 @@ async def agency_create_order(
             if is_spray:
                 case_count = qty  # 入力値はケース数
                 actual_qty = case_count * CASE_SIZE  # 本数に変換
-                # ケース数に応じたランク価格を適用
-            if is_spray:
-                case_count = qty  # 入力値はケース数
-                actual_qty = case_count * CASE_SIZE  # 本数に変換
-                # 共通ロジックを使用して価格計算
                 price = calculate_spray_price(product, case_count, agency.rank)
             else:
                 actual_qty = qty
@@ -3960,15 +3921,14 @@ async def dispatch_invoices_email(
             
     return RedirectResponse(url=f"/admin/invoice-dispatch?success={success_count}", status_code=303)
 
-    return RedirectResponse(url=f"/admin/invoice-dispatch?success={success_count}", status_code=303)
-    
 
 
 @app.get("/notifications/{notification_id}/read")
 async def read_notification(
     notification_id: int,
     request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
 ):
     n = db.query(models.Notification).get(notification_id)
     if n:
