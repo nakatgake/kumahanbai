@@ -51,17 +51,22 @@ jobs:
           script: |
             set -e
             cd /var/www/kumanomori
-            if [ -x venv/bin/pip ]; then
-              venv/bin/pip install -r requirements.txt
-            fi
             if [ -x venv/bin/python ]; then
-              venv/bin/python -m py_compile main.py models.py database.py
+              venv/bin/python -m py_compile main.py models.py database.py billing_integrity_check.py
             fi
             systemctl restart kumanomori
             systemctl restart nginx
-            sleep 5
-            if ! curl -fsS --max-time 10 http://127.0.0.1:8000/test-ping; then
+            ok=0
+            for i in $(seq 1 12); do
+              if curl -fsS --max-time 5 http://127.0.0.1:8000/test-ping; then
+                ok=1
+                break
+              fi
+              sleep 5
+            done
+            if [ "$ok" != "1" ]; then
               echo "Health check failed. Restoring latest backup..."
+              journalctl -u kumanomori -n 80 --no-pager || true
               systemctl stop kumanomori || true
               if [ -f /root/kumanomori_backups/latest.tar.gz ]; then
                 tar -xzf /root/kumanomori_backups/latest.tar.gz -C /var/www
