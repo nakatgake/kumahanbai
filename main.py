@@ -23,7 +23,7 @@ import smtplib
 import ssl
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
-    from utils.date_utils import is_closing_day, calculate_payment_date, next_business_day, get_next_closing_date
+    from utils.date_utils import is_closing_day, calculate_payment_date, next_business_day, get_next_closing_date, get_effective_date
     HAS_SCHEDULER = True
 except ImportError:
     print("Warning: APScheduler or date-util not found. Automated billing is disabled.")
@@ -313,6 +313,14 @@ def billable_agency_orders_query(db: Session):
         models.AgencyOrder.converted_order_id == None
     )
 
+def billing_period_for(year: int, month: int, closing_day: int):
+    """請求月と顧客締め日から、集計開始日・締め日を返す。例: 20日締め4月分=3/21〜4/20。"""
+    closing_day = closing_day or 31
+    period_end = get_effective_date(year, month, closing_day)
+    prev_month = period_end - datetime.timedelta(days=period_end.day)
+    period_start = get_effective_date(prev_month.year, prev_month.month, closing_day) + datetime.timedelta(days=1)
+    return period_start, period_end
+
 def calculate_spray_price(product, case_count: int, rank: models.CustomerRank) -> int:
     """
     熊スプレーのケース数に応じた動的価格計算
@@ -437,13 +445,15 @@ def closing_notification_job():
                     models.Quotation.customer_id == cust.id,
                     models.Order.invoice_id == None,
                     models.Order.order_date >= safe_date,
+                    models.Order.order_date <= datetime.datetime.combine(today, datetime.time.max),
                 ).all()
 
                 # 2. 未請求の代理店受注を抽出 (処理済みのみ)
                 agency_orders = billable_agency_orders_query(db).filter(
                     models.AgencyOrder.customer_id == cust.id,
                     models.AgencyOrder.invoice_id == None,
-                    models.AgencyOrder.order_date >= safe_date
+                    models.AgencyOrder.order_date >= safe_date,
+                    models.AgencyOrder.order_date <= datetime.datetime.combine(today, datetime.time.max)
                 ).all()
                 
                 if not standard_orders and not agency_orders:
@@ -507,7 +517,7 @@ def closing_notification_job():
                             qi = models.QuotationItem(
                                 quotation_id=shadow_quote.id,
                                 product_id=item.product_id,
-                                description=f"[{ao.order_number}] {item.product_name}",
+                                description=f"[{ao.order_date.strftime('%Y/%m/%d')} {ao.order_number}] {item.product_name}",
                                 quantity=item.quantity,
                                 unit_price=item.unit_price,
                                 subtotal=item.subtotal
@@ -2085,20 +2095,16 @@ async def admin_generate_monthly_invoices(
     user: models.User = Depends(get_active_user)
 ):
     """指定した年月の受注をスキャンし、顧客ごとに1枚の合算請求書を生成・更新する"""
-    import calendar
-    from utils.date_utils import get_effective_date, calculate_payment_date, next_business_day
-    
-    start_date = datetime.date(year, month, 1)
-    last_day = calendar.monthrange(year, month)[1]
-    end_date = datetime.date(year, month, last_day)
+    from utils.date_utils import calculate_payment_date, next_business_day
     
     # 処理対象の顧客（その月に売上がある顧客）を抽出
     customers = db.query(models.Customer).all()
     
     count = 0
     for cust in customers:
+        start_date, end_date = billing_period_for(year, month, cust.closing_day or 31)
         # その月の「標準受注」と「代理店受注」を取得
-        # ※すでに請求書があるものも含めて、その月の全データを対象にする（統合のため）
+        # ※すでに請求書があるものも含めて、顧客ごとの締め期間内データを対象にする（統合のため）
         standard_candidates = billable_standard_orders_query(db).join(models.Quotation).filter(
             models.Quotation.customer_id == cust.id,
             models.Order.order_date >= datetime.datetime.combine(start_date, datetime.time.min),
@@ -2182,7 +2188,7 @@ async def admin_generate_monthly_invoices(
                 total_amount=float(grand_total_excl_tax),
                 status=models.InvoiceStatus.UNPAID,
                 delivery_status="UNSENT",
-                memo=f"{year}年{month}月分 合算請求書（手動実行による生成/統合）"
+                memo=f"{start_date.strftime('%Y/%m/%d')}〜{end_date.strftime('%Y/%m/%d')} 合算請求書（手動実行による生成/統合）"
             )
             db.add(invoice)
             db.flush()
@@ -2191,7 +2197,7 @@ async def admin_generate_monthly_invoices(
             invoice.total_amount = float(grand_total_excl_tax)
             invoice.issue_date = datetime.datetime.combine(end_date, datetime.time.min)
             invoice.due_date = datetime.datetime.combine(due_date, datetime.time.min)
-            invoice.memo = f"{year}年{month}月分 合算請求書（再実行による更新）"
+            invoice.memo = f"{start_date.strftime('%Y/%m/%d')}〜{end_date.strftime('%Y/%m/%d')} 合算請求書（再実行による更新）"
 
         # 注文を紐付け直す
         for o in standard_orders:
@@ -2229,7 +2235,7 @@ async def admin_generate_monthly_invoices(
                     qi = models.QuotationItem(
                         quotation_id=shadow_quote.id,
                         product_id=item.product_id,
-                        description=f"[{ao.order_number}] {item.product_name}",
+                        description=f"[{ao.order_date.strftime('%Y/%m/%d')} {ao.order_number}] {item.product_name}",
                         quantity=item.quantity,
                         unit_price=item.unit_price,
                         subtotal=item.subtotal
