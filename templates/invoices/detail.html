@@ -7,6 +7,11 @@
     <a href="/customers" style="color: #b71c1c; font-weight: bold;">顧客管理からアドレスを登録してください。</a>
 </div>
 {% endif %}
+{% if request.query_params.get('error') == 'pdf' %}
+<div style="background: #ffebee; border-left: 4px solid #e53935; color: #b71c1c; padding: 1rem 1.5rem; border-radius: 6px; margin-bottom: 1.5rem;">
+    <strong>⚠️ 送信エラー：</strong>請求書PDFを生成できなかったため、メール送信を中止しました。
+</div>
+{% endif %}
 <div class="header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
     <h2>請求書詳細：{{ invoice.invoice_number }}</h2>
     <div style="display: flex; gap: 1rem;">
@@ -37,7 +42,8 @@
 
             <div style="background: #f8f9fa; border: 2px solid #1a2a6c; padding: 1.5rem; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
                 <span style="font-size: 1.1rem; font-weight: bold;">御請求金額（税込）</span>
-                <span style="font-size: 2rem; font-weight: bold; color: #1a2a6c;">¥{{ "{:,.0f}".format((invoice.total_amount * 1.1)|int) }}-</span>
+                {% set tax = invoice_tax_summary(invoice.total_amount) %}
+                <span style="font-size: 2rem; font-weight: bold; color: #1a2a6c;">¥{{ "{:,.0f}".format(tax.total) }}-</span>
             </div>
 
             <h4>合算された受注内訳</h4>

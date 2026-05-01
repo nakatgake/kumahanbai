@@ -12,6 +12,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Backup current VPS release via ssh
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 220.158.27.121
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            BACKUP_DIR="/root/kumanomori_backups"
+            TS="$(date +%Y%m%d_%H%M%S)"
+            mkdir -p "$BACKUP_DIR"
+            if [ -d /var/www/kumanomori ]; then
+              tar --exclude='/var/www/kumanomori/venv' \
+                  --exclude='/var/www/kumanomori/__pycache__' \
+                  -czf "$BACKUP_DIR/release_$TS.tar.gz" \
+                  -C /var/www kumanomori
+              cp "$BACKUP_DIR/release_$TS.tar.gz" "$BACKUP_DIR/latest.tar.gz"
+            fi
+
       - name: Copy files via scp
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -19,7 +38,7 @@ jobs:
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           # 大切なファイルを上書きしないように設定します
-          source: "!, .git, !, venv, !, *.db, !, *.db.tmp, !, **"
+          source: "main.py,models.py,database.py,requirements.txt,billing_integrity_check.py,templates,static,utils,deploy"
           target: "/var/www/kumanomori/"
           rm: false
 
@@ -30,5 +49,24 @@ jobs:
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            set -e
+            cd /var/www/kumanomori
+            if [ -x venv/bin/pip ]; then
+              venv/bin/pip install -r requirements.txt
+            fi
+            if [ -x venv/bin/python ]; then
+              venv/bin/python -m py_compile main.py models.py database.py
+            fi
             systemctl restart kumanomori
             systemctl restart nginx
+            sleep 5
+            if ! curl -fsS --max-time 10 http://127.0.0.1:8000/test-ping; then
+              echo "Health check failed. Restoring latest backup..."
+              systemctl stop kumanomori || true
+              if [ -f /root/kumanomori_backups/latest.tar.gz ]; then
+                tar -xzf /root/kumanomori_backups/latest.tar.gz -C /var/www
+              fi
+              systemctl start kumanomori
+              systemctl restart nginx
+              exit 1
+            fi

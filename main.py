@@ -216,6 +216,31 @@ def migrate_db():
     if 'invoice_id' not in cols:
         print("Migrating orders: adding invoice_id column...")
         cursor.execute("ALTER TABLE orders ADD COLUMN invoice_id INTEGER")
+
+    cursor.execute("PRAGMA table_info(agency_orders)")
+    cols = [row[1] for row in cursor.fetchall()]
+    if 'converted_order_id' not in cols:
+        print("Migrating agency_orders: adding converted_order_id column...")
+        cursor.execute("ALTER TABLE agency_orders ADD COLUMN converted_order_id INTEGER")
+        try:
+            cursor.execute("""
+                UPDATE agency_orders
+                SET converted_order_id = (
+                    SELECT id
+                    FROM orders
+                    WHERE orders.order_number LIKE 'ORD-AG-' || agency_orders.id || '-%'
+                    ORDER BY orders.id DESC
+                    LIMIT 1
+                )
+                WHERE converted_order_id IS NULL
+                  AND EXISTS (
+                    SELECT 1
+                    FROM orders
+                    WHERE orders.order_number LIKE 'ORD-AG-' || agency_orders.id || '-%'
+                  )
+            """)
+        except Exception as e:
+            print(f"Agency conversion backfill warning: {e}")
     
     # --- 既存データの自動移行（旧1対1の請求書データ対応） ---
     try:
@@ -257,6 +282,36 @@ def get_system_setting(db: Session, key: str, default: str) -> str:
     """システム設定から値を取得。存在しない場合はデフォルト値を返す"""
     setting = db.query(models.SystemSetting).filter_by(key=key).first()
     return setting.value if setting else default
+
+def is_invoice_locked(invoice: models.Invoice) -> bool:
+    """顧客へ送付済み、または入金済みの請求書は月次統合で変更しない。"""
+    if not invoice:
+        return False
+    return (
+        invoice.status in (models.InvoiceStatus.ISSUED, models.InvoiceStatus.PAID)
+        or invoice.delivery_status in ("SENT", "MAILED")
+    )
+
+def invoice_tax_summary(amount_excl_tax: float, tax_rate: float = 0.1) -> dict:
+    subtotal = int(amount_excl_tax or 0)
+    tax = int(subtotal * tax_rate)
+    return {
+        "subtotal": subtotal,
+        "tax_rate": tax_rate,
+        "tax": tax,
+        "total": subtotal + tax,
+    }
+
+def billable_standard_orders_query(db: Session):
+    return db.query(models.Order).filter(
+        models.Order.status.in_([models.OrderStatus.SHIPPED, models.OrderStatus.COMPLETED])
+    )
+
+def billable_agency_orders_query(db: Session):
+    return db.query(models.AgencyOrder).filter(
+        models.AgencyOrder.status == "処理済み",
+        models.AgencyOrder.converted_order_id == None
+    )
 
 def calculate_spray_price(product, case_count: int, rank: models.CustomerRank) -> int:
     """
@@ -352,6 +407,7 @@ async def auth_exception_handler(request: Request, exc: NotAuthenticatedExceptio
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+templates.env.globals["invoice_tax_summary"] = invoice_tax_summary
 
 @app.get("/test-ping")
 async def test_ping():
@@ -377,17 +433,15 @@ def closing_notification_job():
                     safe_date = datetime.datetime.strptime(safe_date_str, "%Y-%m-%d")
                 except ValueError:
                     safe_date = datetime.datetime(2020, 1, 1)
-                standard_orders = db.query(models.Order).join(models.Quotation).filter(
+                standard_orders = billable_standard_orders_query(db).join(models.Quotation).filter(
                     models.Quotation.customer_id == cust.id,
                     models.Order.invoice_id == None,
                     models.Order.order_date >= safe_date,
-                    models.Order.status.in_([models.OrderStatus.SHIPPED, models.OrderStatus.COMPLETED])
                 ).all()
 
                 # 2. 未請求の代理店受注を抽出 (処理済みのみ)
-                agency_orders = db.query(models.AgencyOrder).filter(
+                agency_orders = billable_agency_orders_query(db).filter(
                     models.AgencyOrder.customer_id == cust.id,
-                    models.AgencyOrder.status == "処理済み",
                     models.AgencyOrder.invoice_id == None,
                     models.AgencyOrder.order_date >= safe_date
                 ).all()
@@ -411,9 +465,8 @@ def closing_notification_job():
                 grand_total_excl_tax = total_standard + total_agency
                 
                 # 消費税計算 (10%固定、小数点以下切り捨て)
-                TAX_RATE = 0.1
-                tax_amount = int(grand_total_excl_tax * TAX_RATE)
-                grand_total_incl_tax = grand_total_excl_tax + tax_amount
+                totals = invoice_tax_summary(grand_total_excl_tax)
+                grand_total_incl_tax = totals["total"]
 
                 # 請求書の作成 (初期状態は「未入金」かつ「未発送/未メール」)
                 invoice = models.Invoice(
@@ -1986,18 +2039,28 @@ async def admin_bulk_print_invoices(
     if not invoices:
         return RedirectResponse(url="/admin/invoice-dispatch", status_code=303)
     
-    # 印刷対象を「発行済」および「郵送処理済」に更新
-    for inv in invoices:
-        inv.delivery_status = "MAILED"
-        if inv.status == models.InvoiceStatus.UNPAID:
-            inv.status = models.InvoiceStatus.ISSUED
-    db.commit()
-    
     return templates.TemplateResponse(request=request, name="invoices/bulk_print.html", context={
         "request": request,
         "invoices": invoices,
         "user": user
     })
+
+@app.post("/invoices/bulk_mark_mailed")
+async def bulk_mark_mailed(
+    invoice_ids: list[int] = Form([]),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    if not invoice_ids:
+        return RedirectResponse(url="/admin/invoice-dispatch?error=1", status_code=303)
+
+    invoices = db.query(models.Invoice).filter(models.Invoice.id.in_(invoice_ids)).all()
+    for inv in invoices:
+        inv.delivery_status = "MAILED"
+        if inv.status == models.InvoiceStatus.UNPAID:
+            inv.status = models.InvoiceStatus.ISSUED
+    db.commit()
+    return RedirectResponse(url=f"/admin/invoice-dispatch?mailed={len(invoices)}", status_code=303)
 
 @app.post("/invoices/bulk_print")
 async def bulk_print_invoices_post(request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
@@ -2036,30 +2099,43 @@ async def admin_generate_monthly_invoices(
     for cust in customers:
         # その月の「標準受注」と「代理店受注」を取得
         # ※すでに請求書があるものも含めて、その月の全データを対象にする（統合のため）
-        standard_orders = db.query(models.Order).join(models.Quotation).filter(
+        standard_candidates = billable_standard_orders_query(db).join(models.Quotation).filter(
             models.Quotation.customer_id == cust.id,
             models.Order.order_date >= datetime.datetime.combine(start_date, datetime.time.min),
             models.Order.order_date <= datetime.datetime.combine(end_date, datetime.time.max)
         ).all()
         
-        agency_orders = db.query(models.AgencyOrder).filter(
+        agency_candidates = billable_agency_orders_query(db).filter(
             models.AgencyOrder.customer_id == cust.id,
             models.AgencyOrder.order_date >= datetime.datetime.combine(start_date, datetime.time.min),
             models.AgencyOrder.order_date <= datetime.datetime.combine(end_date, datetime.time.max),
-            models.AgencyOrder.status == "処理済み"
         ).all()
         
-        if not standard_orders and not agency_orders:
-            continue
-            
         # ターゲットとなる合算請求書番号 (INV-YYYYMM-CUSTID)
         monthly_inv_num = f"INV-{year}{month:02d}-{cust.id:04d}"
         
         # 既存の合算請求書があるか確認
         invoice = db.query(models.Invoice).filter_by(invoice_number=monthly_inv_num).first()
         
-        # もし「入金済み」なら、会計上の安全のためスキップ
-        if invoice and invoice.status == models.InvoiceStatus.PAID:
+        # 顧客へ送付済み/入金済みの請求書は、会計上の安全のため上書きしない
+        if invoice and is_invoice_locked(invoice):
+            continue
+
+        standard_orders = []
+        for order in standard_candidates:
+            linked_invoice = db.query(models.Invoice).get(order.invoice_id) if order.invoice_id else None
+            if linked_invoice and linked_invoice.id != getattr(invoice, "id", None) and is_invoice_locked(linked_invoice):
+                continue
+            standard_orders.append(order)
+
+        agency_orders = []
+        for agency_order in agency_candidates:
+            linked_invoice = db.query(models.Invoice).get(agency_order.invoice_id) if agency_order.invoice_id else None
+            if linked_invoice and linked_invoice.id != getattr(invoice, "id", None) and is_invoice_locked(linked_invoice):
+                continue
+            agency_orders.append(agency_order)
+
+        if not standard_orders and not agency_orders:
             continue
 
         # バラバラに発行された「他の請求書」を特定して解体する（統合処理）
@@ -2068,12 +2144,12 @@ async def admin_generate_monthly_invoices(
         for o in standard_orders:
             if o.invoice_id and (not invoice or o.invoice_id != invoice.id):
                 other_inv = db.query(models.Invoice).get(o.invoice_id)
-                if other_inv and other_inv.status != models.InvoiceStatus.PAID:
+                if other_inv and not is_invoice_locked(other_inv):
                     other_invoices.add(other_inv)
         for ao in agency_orders:
             if ao.invoice_id and (not invoice or ao.invoice_id != invoice.id):
                 other_inv = db.query(models.Invoice).get(ao.invoice_id)
-                if other_inv and other_inv.status != models.InvoiceStatus.PAID:
+                if other_inv and not is_invoice_locked(other_inv):
                     other_invoices.add(other_inv)
         
         # 解体実行: 他の請求書から紐付けを解除し、その請求書を削除
@@ -2350,6 +2426,9 @@ async def delete_invoice(invoice_id: int, db: Session = Depends(get_db), user: m
                             update_product_stock(db, item.product_id, main_loc.id, item.quantity, "INBOUND", "請求書削除による在庫戻し")
             order.invoice_id = None
             order.status = models.OrderStatus.PENDING # 未出荷に戻す
+
+        for agency_order in db.query(models.AgencyOrder).filter_by(invoice_id=invoice.id).all():
+            agency_order.invoice_id = None
         
         db.delete(invoice)
         db.commit()
@@ -2485,7 +2564,8 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
         
         pdf.set_font("Japanese" if font_found else "helvetica", "", 20)
         pdf.set_text_color(*primary_color)
-        grand_total = int(invoice.total_amount * 1.1)
+        totals = invoice_tax_summary(invoice.total_amount)
+        grand_total = totals["total"]
         pdf.cell(125, 7, f"¥{grand_total:,.0f} -", ln=True, align="R")
         
         pdf.set_text_color(51, 51, 51)
@@ -2574,7 +2654,7 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
         
         pdf.set_x(summary_x)
         pdf.cell(35, 6, "消費税（10%）", border=0, align="R")
-        pdf.cell(35, 6, f"¥{int(invoice.total_amount * 0.1):,.0f}", border=0, align="R", ln=True)
+        pdf.cell(35, 6, f"¥{totals['tax']:,.0f}", border=0, align="R", ln=True)
         
         pdf.set_draw_color(*primary_color)
         pdf.line(summary_x + 5, pdf.get_y(), 200, pdf.get_y())
@@ -2635,11 +2715,14 @@ async def send_invoice_email(id: int, db: Session = Depends(get_db), user: model
     
     # PDF生成
     pdf_content = generate_invoice_pdf_content(invoice)
+    if not pdf_content:
+        return RedirectResponse(url=f"/invoices/{id}?error=pdf", status_code=303)
     attachments = [{
         "name": f"請求書_{invoice.invoice_number}.pdf",
         "content": pdf_content
-    }] if pdf_content else None
+    }]
     
+    totals = invoice_tax_summary(invoice.total_amount)
     subject = f"【ご請求書】株式会社熊ノ護化研より（請求番号：{invoice.invoice_number}）"
     body = f"""{customer.company or customer.name}
 {customer.honorific or '御中'}
@@ -2651,7 +2734,7 @@ async def send_invoice_email(id: int, db: Session = Depends(get_db), user: model
 詳細は添付のPDFまたは以下のリンクよりご確認ください。
 
 ■ 請求番号：{invoice.invoice_number}
-■ 御請求金額（税込）：¥{'{:,.0f}'.format(grand_total := int(invoice.total_amount * 1.1))}-
+■ 御請求金額（税込）：¥{'{:,.0f}'.format(totals['total'])}-
 ■ お支払期限：{invoice.due_date.strftime('%Y/%m/%d') if invoice.due_date else ''}
 
 お振込先情報は添付の請求書PDF内に記載しております。
@@ -3632,9 +3715,11 @@ async def convert_agency_order_to_main(
         memo=f"代理店発注({agency_order.order_number})より変換"
     )
     db.add(new_order)
+    db.flush()
     
     # 4. Update Agency Order Status
     agency_order.status = "処理済み"
+    agency_order.converted_order_id = new_order.id
     
     db.commit()
     return RedirectResponse(url="/orders", status_code=303)
@@ -3852,7 +3937,7 @@ async def dispatch_invoices_email(
             msg["To"] = customer.email
             
             due_date_str = inv.due_date.strftime('%Y年%m月%d日') if inv.due_date else '末日'
-            grand_total = int(inv.total_amount * 1.1)
+            grand_total = invoice_tax_summary(inv.total_amount)["total"]
             
             html = f"""
             <html>
@@ -3898,12 +3983,15 @@ async def dispatch_invoices_email(
             try:
                 from email.mime.application import MIMEApplication
                 pdf_content = generate_invoice_pdf_content(inv)
-                if pdf_content:
-                    part = MIMEApplication(pdf_content, Name=f"請求書_{inv.invoice_number}.pdf")
-                    part['Content-Disposition'] = f'attachment; filename="請求書_{inv.invoice_number}.pdf"'
-                    msg.attach(part)
+                if not pdf_content:
+                    print(f"PDF Attachment Error: invoice {inv.invoice_number} generated no content")
+                    continue
+                part = MIMEApplication(pdf_content, Name=f"請求書_{inv.invoice_number}.pdf")
+                part['Content-Disposition'] = f'attachment; filename="請求書_{inv.invoice_number}.pdf"'
+                msg.attach(part)
             except Exception as e:
                 print(f"PDF Attachment Error: {e}")
+                continue
 
             server.send_message(msg)
             

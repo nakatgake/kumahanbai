@@ -54,7 +54,8 @@
                         {% set customer = invoice.customer if invoice.customer else (invoice.orders[0].quotation.customer if invoice.orders else None) %}
                         <td>{{ customer.company or customer.name if customer else '' }}</td>
                         <td>{{ invoice.due_date.strftime('%Y/%m/%d') }}</td>
-                        <td>¥{{ "{:,.0f}".format((invoice.total_amount * 1.1)|int) }}</td>
+                        {% set tax = invoice_tax_summary(invoice.total_amount) %}
+                        <td>¥{{ "{:,.0f}".format(tax.total) }}</td>
                         <td>
                             {% if invoice.delivery_status == 'SENT' %}
                                 <span style="background: #e8f5e9; color: #2e7d32; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem;">送信済(Mail)</span>

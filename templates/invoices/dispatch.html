@@ -22,6 +22,12 @@
 </div>
 {% endif %}
 
+{% if request.query_params.get("mailed") %}
+<div style="background: #e8f5e9; color: #1b5e20; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; border: 1px solid #c8e6c9;">
+    <strong>郵送処理完了：</strong> {{ request.query_params.get("mailed") }}件の請求書を郵送済みにしました。
+</div>
+{% endif %}
+
 <!-- 手動一括生成セクション -->
 <div class="card" style="margin-bottom: 2rem; border-top: 4px solid #3498db; background: #fff;">
     <h3 style="margin-top: 0; color: #2c3e50; font-size: 1.1rem; display: flex; align-items: center; gap: 8px;">
@@ -168,8 +174,9 @@
                         {% endif %}
                     </td>
                     <td>{% if customer %}{{ customer.email or '' }}{% endif %}</td>
+                    {% set tax = invoice_tax_summary(inv.total_amount) %}
                     <td style="font-weight: bold; color: #2c3e50;">
-                        ¥{% if inv.total_amount %}{{ "{:,.0f}".format(inv.total_amount) }}{% else %}0{% endif %}
+                        ¥{{ "{:,.0f}".format(tax.total) }}
                     </td>
                 </tr>
                 {% endfor %}
@@ -247,8 +254,9 @@
                         {% endif %}
                     </td>
                     <td>{% if customer %}{{ customer.address or '' }}{% endif %}</td>
+                    {% set tax = invoice_tax_summary(inv.total_amount) %}
                     <td style="font-weight: bold; color: #2c3e50;">
-                        ¥{% if inv.total_amount %}{{ "{:,.0f}".format(inv.total_amount) }}{% else %}0{% endif %}
+                        ¥{{ "{:,.0f}".format(tax.total) }}
                     </td>
                 </tr>
                 {% endfor %}

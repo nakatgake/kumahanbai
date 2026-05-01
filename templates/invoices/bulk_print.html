@@ -234,6 +234,12 @@
 
     <div class="no-print no-print-toolbar">
         <button class="btn btn-primary" onclick="window.print()">🖨️ 一括印刷する</button>
+        <form action="/invoices/bulk_mark_mailed" method="post" style="display: inline;" onsubmit="return confirm('印刷・封入が完了した請求書を郵送済みにします。よろしいですか？')">
+            {% for doc in invoices %}
+            <input type="hidden" name="invoice_ids" value="{{ doc.id }}">
+            {% endfor %}
+            <button type="submit" class="btn btn-primary">郵送済みにする</button>
+        </form>
         <button class="btn btn-outline" onclick="window.location.href='/invoices'">戻る</button>
     </div>
 
@@ -274,9 +280,10 @@
                 </div>
             </div>
 
+            {% set tax = invoice_tax_summary(doc.total_amount) %}
             <div class="grand-total-box">
                 <div class="total-label">御請求金額（税込）</div>
-                <div class="total-amount">{{ "¥{:,.0f}".format((doc.total_amount * 1.1)|int) }}-</div>
+                <div class="total-amount">{{ "¥{:,.0f}".format(tax.total) }}-</div>
             </div>
 
             <table class="items-table">
@@ -336,11 +343,11 @@
                     {% endif %}
                     <tr>
                         <td class="summary-label">消費税（10%）</td>
-                        <td class="summary-value">{{ "¥{:,.0f}".format((doc.total_amount * 0.1)|int) }}</td>
+                        <td class="summary-value">{{ "¥{:,.0f}".format(tax.tax) }}</td>
                     </tr>
                     <tr>
                         <td class="summary-grand-label">合計（税込）</td>
-                        <td class="summary-grand-value">{{ "¥{:,.0f}".format((doc.total_amount * 1.1)|int) }}</td>
+                        <td class="summary-grand-value">{{ "¥{:,.0f}".format(tax.total) }}</td>
                     </tr>
                 </table>
             </div>
