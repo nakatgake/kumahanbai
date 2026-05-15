@@ -7,7 +7,7 @@ import random
 import string
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 import models
 from database import SessionLocal, engine, get_db
@@ -3506,6 +3506,36 @@ async def agency_change_password(
         "success": "パスワードを正常に変更しました。"
     })
 
+@app.get("/agency/non-interference", response_class=HTMLResponse)
+async def agency_non_interference_list(
+    request: Request,
+    q: str = "",
+    db: Session = Depends(get_db),
+    agency: models.Customer = Depends(get_active_agency)
+):
+    query = db.query(models.NonInterferenceEntry).outerjoin(
+        models.Customer, models.NonInterferenceEntry.agency_id == models.Customer.id
+    ).filter(models.NonInterferenceEntry.status == "active")
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(
+            models.NonInterferenceEntry.customer_name.like(like),
+            models.NonInterferenceEntry.customer_address.like(like),
+            models.NonInterferenceEntry.customer_phone.like(like),
+            models.NonInterferenceEntry.contact_name.like(like),
+            models.NonInterferenceEntry.product_note.like(like),
+            models.Customer.company.like(like),
+            models.Customer.name.like(like),
+        ))
+    entries = query.order_by(models.NonInterferenceEntry.id.desc()).all()
+    return templates.TemplateResponse(request=request, name="agency/non_interference.html", context={
+        "request": request,
+        "agency": agency,
+        "active_page": "agency_non_interference",
+        "entries": entries,
+        "search_query": q
+    })
+
 # --- Agency Notifications ---
 @app.get("/agency/notifications", response_class=HTMLResponse)
 async def agency_notifications(
@@ -3633,6 +3663,107 @@ async def admin_agency_orders(
         "search_query": q,
         "user": user
     })
+
+@app.get("/agency-orders/non-interference", response_class=HTMLResponse)
+async def admin_non_interference_list(
+    request: Request,
+    q: str = "",
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    query = db.query(models.NonInterferenceEntry).outerjoin(
+        models.Customer, models.NonInterferenceEntry.agency_id == models.Customer.id
+    )
+    if q:
+        like = f"%{q}%"
+        query = query.filter(or_(
+            models.NonInterferenceEntry.customer_name.like(like),
+            models.NonInterferenceEntry.customer_address.like(like),
+            models.NonInterferenceEntry.customer_phone.like(like),
+            models.NonInterferenceEntry.contact_name.like(like),
+            models.NonInterferenceEntry.product_note.like(like),
+            models.Customer.company.like(like),
+            models.Customer.name.like(like),
+        ))
+    entries = query.order_by(models.NonInterferenceEntry.id.desc()).all()
+    agencies = db.query(models.Customer).filter(
+        models.Customer.is_agency == True
+    ).order_by(models.Customer.company.asc()).all()
+    return templates.TemplateResponse(request=request, name="non_interference_admin.html", context={
+        "request": request,
+        "active_page": "non_interference",
+        "entries": entries,
+        "agencies": agencies,
+        "search_query": q,
+        "user": user
+    })
+
+@app.post("/agency-orders/non-interference")
+async def admin_create_non_interference(
+    customer_name: str = Form(...),
+    agency_id: str = Form(""),
+    customer_address: str = Form(""),
+    customer_phone: str = Form(""),
+    contact_name: str = Form(""),
+    product_note: str = Form(""),
+    memo: str = Form(""),
+    status: str = Form("active"),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    entry = models.NonInterferenceEntry(
+        agency_id=int(agency_id) if agency_id else None,
+        customer_name=customer_name.strip(),
+        customer_address=customer_address.strip() or None,
+        customer_phone=customer_phone.strip() or None,
+        contact_name=contact_name.strip() or None,
+        product_note=product_note.strip() or None,
+        memo=memo.strip() or None,
+        status=status or "active",
+    )
+    db.add(entry)
+    db.commit()
+    return RedirectResponse(url="/agency-orders/non-interference", status_code=303)
+
+@app.post("/agency-orders/non-interference/{entry_id}/update")
+async def admin_update_non_interference(
+    entry_id: int,
+    customer_name: str = Form(...),
+    agency_id: str = Form(""),
+    customer_address: str = Form(""),
+    customer_phone: str = Form(""),
+    contact_name: str = Form(""),
+    product_note: str = Form(""),
+    memo: str = Form(""),
+    status: str = Form("active"),
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    entry = db.query(models.NonInterferenceEntry).get(entry_id)
+    if entry:
+        entry.agency_id = int(agency_id) if agency_id else None
+        entry.customer_name = customer_name.strip()
+        entry.customer_address = customer_address.strip() or None
+        entry.customer_phone = customer_phone.strip() or None
+        entry.contact_name = contact_name.strip() or None
+        entry.product_note = product_note.strip() or None
+        entry.memo = memo.strip() or None
+        entry.status = status or "active"
+        entry.updated_at = datetime.datetime.utcnow()
+        db.commit()
+    return RedirectResponse(url="/agency-orders/non-interference", status_code=303)
+
+@app.post("/agency-orders/non-interference/{entry_id}/delete")
+async def admin_delete_non_interference(
+    entry_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user)
+):
+    entry = db.query(models.NonInterferenceEntry).get(entry_id)
+    if entry:
+        db.delete(entry)
+        db.commit()
+    return RedirectResponse(url="/agency-orders/non-interference", status_code=303)
 
 @app.post("/agency-orders/{order_id}/process")
 async def admin_process_agency_order(

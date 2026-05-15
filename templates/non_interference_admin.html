@@ -1,0 +1,161 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>非干渉リスト</h2>
+</div>
+
+<div class="card" style="border-left: 4px solid #f39c12;">
+    <h3 style="margin-bottom: 1rem; color: #2c3e50;">納品先を登録</h3>
+    <form action="/agency-orders/non-interference" method="post">
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem;">
+            <div class="form-group">
+                <label>納品先名 <span style="color: #e74c3c;">*</span></label>
+                <input type="text" name="customer_name" required placeholder="例：株式会社サンプル 秋田支店">
+            </div>
+            <div class="form-group">
+                <label>担当代理店</label>
+                <select name="agency_id">
+                    <option value="">未指定</option>
+                    {% for agency in agencies %}
+                    <option value="{{ agency.id }}">{{ agency.company or agency.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>住所</label>
+                <input type="text" name="customer_address" placeholder="納品先住所">
+            </div>
+            <div class="form-group">
+                <label>電話番号</label>
+                <input type="text" name="customer_phone" placeholder="018-000-0000">
+            </div>
+            <div class="form-group">
+                <label>先方担当者</label>
+                <input type="text" name="contact_name" placeholder="担当者名">
+            </div>
+            <div class="form-group">
+                <label>対象商品・案件</label>
+                <input type="text" name="product_note" placeholder="例：防除資材、年間契約など">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>メモ</label>
+            <textarea name="memo" rows="3" placeholder="代理店が確認すべき補足があれば入力"></textarea>
+        </div>
+        <input type="hidden" name="status" value="active">
+        <button type="submit" class="btn btn-primary">登録する</button>
+    </form>
+</div>
+
+<div class="card" style="margin-bottom: 1.5rem;">
+    <form action="/agency-orders/non-interference" method="get" style="display: flex; gap: 1rem; align-items: end;">
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+            <label>検索</label>
+            <input type="text" name="q" value="{{ search_query }}" placeholder="納品先名・住所・電話・代理店・商品で検索" style="margin-bottom: 0;">
+        </div>
+        <button type="submit" class="btn btn-primary">検索</button>
+        {% if search_query %}
+        <a href="/agency-orders/non-interference" class="btn btn-secondary">クリア</a>
+        {% endif %}
+    </form>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>納品先</th>
+                <th>担当代理店</th>
+                <th>連絡先</th>
+                <th>対象商品・案件</th>
+                <th>状態</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in entries %}
+            <tr>
+                <td>
+                    <strong>{{ entry.customer_name }}</strong><br>
+                    <span style="color: #666; font-size: 0.85rem;">{{ entry.customer_address or '-' }}</span>
+                </td>
+                <td>{{ entry.agency.company if entry.agency else '未指定' }}</td>
+                <td>
+                    {{ entry.customer_phone or '-' }}<br>
+                    <span style="color: #666; font-size: 0.85rem;">{{ entry.contact_name or '' }}</span>
+                </td>
+                <td>{{ entry.product_note or '-' }}</td>
+                <td>
+                    {% if entry.status == 'active' %}
+                    <span class="badge badge-warning">非干渉</span>
+                    {% else %}
+                    <span class="badge badge-secondary">非表示</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <form action="/agency-orders/non-interference/{{ entry.id }}/delete" method="post" onsubmit="return confirm('この非干渉リストを削除してもよろしいですか？');">
+                        <button type="submit" class="btn btn-sm btn-danger">削除</button>
+                    </form>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="6" style="padding: 0;">
+                    <details style="padding: 0.5rem 1rem;">
+                        <summary style="cursor: pointer; color: #3498db; font-size: 0.85rem;">編集・メモを表示</summary>
+                        <form action="/agency-orders/non-interference/{{ entry.id }}/update" method="post" style="margin-top: 1rem;">
+                            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem;">
+                                <div class="form-group">
+                                    <label>納品先名</label>
+                                    <input type="text" name="customer_name" value="{{ entry.customer_name }}" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>担当代理店</label>
+                                    <select name="agency_id">
+                                        <option value="">未指定</option>
+                                        {% for agency in agencies %}
+                                        <option value="{{ agency.id }}" {% if entry.agency_id == agency.id %}selected{% endif %}>{{ agency.company or agency.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>住所</label>
+                                    <input type="text" name="customer_address" value="{{ entry.customer_address or '' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>電話番号</label>
+                                    <input type="text" name="customer_phone" value="{{ entry.customer_phone or '' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>先方担当者</label>
+                                    <input type="text" name="contact_name" value="{{ entry.contact_name or '' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>対象商品・案件</label>
+                                    <input type="text" name="product_note" value="{{ entry.product_note or '' }}">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>状態</label>
+                                <select name="status">
+                                    <option value="active" {% if entry.status == 'active' %}selected{% endif %}>代理店サイトに表示</option>
+                                    <option value="hidden" {% if entry.status == 'hidden' %}selected{% endif %}>代理店サイトに非表示</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>メモ</label>
+                                <textarea name="memo" rows="3">{{ entry.memo or '' }}</textarea>
+                            </div>
+                            <button type="submit" class="btn btn-sm btn-primary">更新する</button>
+                        </form>
+                    </details>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if not entries %}
+    <div style="text-align: center; padding: 2rem; color: #999;">非干渉リストはありません</div>
+    {% endif %}
+</div>
+{% endblock %}

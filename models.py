@@ -181,6 +181,23 @@ class Notification(Base):
     related_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
+class NonInterferenceEntry(Base):
+    """代理店同士の納品先重複を避けるための非干渉リスト"""
+    __tablename__ = "non_interference_entries"
+    id = Column(Integer, primary_key=True, index=True)
+    agency_id = Column(Integer, ForeignKey("customers.id", ondelete="SET NULL"), nullable=True)
+    customer_name = Column(String, index=True)
+    customer_address = Column(String, nullable=True)
+    customer_phone = Column(String, nullable=True)
+    contact_name = Column(String, nullable=True)
+    product_note = Column(String, nullable=True)
+    memo = Column(String, nullable=True)
+    status = Column(String, default="active")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    agency = relationship("Customer")
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)

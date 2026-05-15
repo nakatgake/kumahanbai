@@ -1,0 +1,68 @@
+{% extends "agency/layout.html" %}
+
+{% block content %}
+<div class="header">
+    <h2>非干渉リスト</h2>
+    <a href="/agency/order/new" class="btn btn-primary" style="background: #1a5276;">発注する</a>
+</div>
+
+<div class="card" style="border-left: 4px solid #f39c12;">
+    <p style="margin: 0; color: #4a5568; line-height: 1.7;">
+        他の代理店が対応中の納品先です。発注前に同じお客様が含まれていないか確認してください。
+    </p>
+</div>
+
+<div class="card" style="margin-bottom: 1.5rem;">
+    <form action="/agency/non-interference" method="get" style="display: flex; gap: 1rem; align-items: end;">
+        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+            <label>検索</label>
+            <input type="text" name="q" value="{{ search_query }}" placeholder="納品先名・住所・電話・代理店・商品で検索" style="margin-bottom: 0;">
+        </div>
+        <button type="submit" class="btn btn-primary">検索</button>
+        {% if search_query %}
+        <a href="/agency/non-interference" class="btn btn-secondary">クリア</a>
+        {% endif %}
+    </form>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>納品先</th>
+                <th>担当代理店</th>
+                <th>連絡先</th>
+                <th>対象商品・案件</th>
+                <th>登録日</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in entries %}
+            <tr>
+                <td>
+                    <strong>{{ entry.customer_name }}</strong><br>
+                    <span style="color: #666; font-size: 0.85rem;">{{ entry.customer_address or '-' }}</span>
+                </td>
+                <td>{{ entry.agency.company if entry.agency else '未指定' }}</td>
+                <td>
+                    {{ entry.customer_phone or '-' }}<br>
+                    <span style="color: #666; font-size: 0.85rem;">{{ entry.contact_name or '' }}</span>
+                </td>
+                <td>{{ entry.product_note or '-' }}</td>
+                <td>{{ entry.created_at.strftime('%Y/%m/%d') if entry.created_at else '-' }}</td>
+            </tr>
+            {% if entry.memo %}
+            <tr>
+                <td colspan="5" style="background: #fff9f0; color: #7f5f01; font-size: 0.9rem;">
+                    {{ entry.memo }}
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+    {% if not entries %}
+    <div style="text-align: center; padding: 2rem; color: #999;">該当する非干渉リストはありません</div>
+    {% endif %}
+</div>
+{% endblock %}
