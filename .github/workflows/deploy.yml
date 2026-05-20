@@ -54,6 +54,8 @@ jobs:
             if [ -x venv/bin/python ]; then
               venv/bin/python -m py_compile main.py models.py database.py billing_integrity_check.py
             fi
+            cp deploy/kumanomori.service /etc/systemd/system/kumanomori.service
+            systemctl daemon-reload
             systemctl restart kumanomori
             systemctl restart nginx
             ok=0

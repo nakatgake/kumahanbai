@@ -366,7 +366,9 @@ def get_price_for_rank(product, rank: models.CustomerRank) -> int:
     return int(price if price and price > 0 else product.price_retail)
 
 # --- Security Configuration ---
-SECRET_KEY = "kumanogo-secret-key-12345" # 本番環境では環境変数などで管理すべき
+SECRET_KEY = os.getenv("SECRET_KEY", "kumanogo-secret-key-12345")
+INIT_ADMIN_TOKEN = os.getenv("INIT_ADMIN_TOKEN", "")
+INIT_ADMIN_PASSWORD = os.getenv("INIT_ADMIN_PASSWORD", "")
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 serializer = URLSafeSerializer(SECRET_KEY)
 
@@ -396,6 +398,11 @@ async def get_active_user(request: Request, db: Session = Depends(get_db)):
     if not user:
         if request.url.path not in ["/login", "/init-admin"] and not request.url.path.startswith("/static"):
             raise NotAuthenticatedException()
+    return user
+
+async def require_admin_user(user: models.User = Depends(get_active_user)):
+    if not user or not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin privileges required")
     return user
 
 import traceback
@@ -473,7 +480,8 @@ def closing_notification_job():
                 inv_num = f"INV-{today.strftime('%Y%m')}-{cust.id:04d}"
                 existing = db.query(models.Invoice).filter_by(invoice_number=inv_num).first()
                 if existing:
-                    inv_num = f"{inv_num}-REV-{now_jst.strftime('%H%M')}"
+                    print(f"INFO: Automated invoice already exists for Customer {cust.id}: {inv_num}. Skipping duplicate run.")
+                    continue
 
                 # 支払期限の計算
                 due_date_raw = calculate_payment_date(today, cust.payment_term_months or 1, cust.payment_day or 31)
@@ -2103,7 +2111,7 @@ async def admin_generate_monthly_invoices(
     month: int = Form(...),
     closing_day_filter: Optional[str] = Form(None),
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     """指定した年月の受注をスキャンし、顧客ごとに1枚の合算請求書を生成・更新する"""
     from utils.date_utils import calculate_payment_date, next_business_day
@@ -2837,17 +2845,17 @@ async def search_customers(q: str = "", db: Session = Depends(get_db), user: mod
 
 # Settings / Backup & Restore
 @app.get("/settings")
-async def settings_page(request: Request, user: models.User = Depends(get_active_user)):
+async def settings_page(request: Request, user: models.User = Depends(require_admin_user)):
     return templates.TemplateResponse(request=request, name="settings.html", context={"request": request, "active_page": "settings", "user": user })
 
 @app.get("/backup")
-async def download_backup(user: models.User = Depends(get_active_user)):
+async def download_backup(user: models.User = Depends(require_admin_user)):
     if os.path.exists("kumanogo.db"):
         return FileResponse("kumanogo.db", filename="kumanogo_backup.db")
     return {"error": "Database file not found"}
 
 @app.post("/restore")
-async def restore_backup(backup_file: UploadFile = File(...), user: models.User = Depends(get_active_user)):
+async def restore_backup(backup_file: UploadFile = File(...), user: models.User = Depends(require_admin_user)):
     from database import engine
     try:
         # Save uploaded file content
@@ -2899,7 +2907,7 @@ async def logout():
 async def list_users(
     request: Request, 
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     users = db.query(models.User).order_by(models.User.id.desc()).all()
     return templates.TemplateResponse(request=request, name="users.html", context={
@@ -2916,7 +2924,7 @@ async def create_user(
     full_name: str = Form(...),
     password: str = Form(...),
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     # Check if username already exists
     existing = db.query(models.User).filter(models.User.username == username).first()
@@ -2944,7 +2952,7 @@ async def create_user(
 async def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     target = db.query(models.User).get(user_id)
     if target and not target.is_admin:
@@ -3002,10 +3010,16 @@ async def change_password(
 
 # 初回の管理者作成用
 @app.get("/init-admin")
-async def init_admin(db: Session = Depends(get_db)):
+async def init_admin(token: str = "", db: Session = Depends(get_db)):
     admin = db.query(models.User).filter(models.User.username == "nakamura@connect-web.jp").first()
+    if admin:
+        return RedirectResponse(url="/login", status_code=303)
+
+    if not INIT_ADMIN_TOKEN or token != INIT_ADMIN_TOKEN or not INIT_ADMIN_PASSWORD:
+        raise HTTPException(status_code=404, detail="Not found")
+
     if not admin:
-        hashed_pw = get_password_hash("N687nh4su4")
+        hashed_pw = get_password_hash(INIT_ADMIN_PASSWORD)
         admin = models.User(
             username="nakamura@connect-web.jp",
             hashed_password=hashed_pw,
@@ -3015,7 +3029,6 @@ async def init_admin(db: Session = Depends(get_db)):
         db.add(admin)
         db.commit()
         return RedirectResponse(url="/login", status_code=303)
-    return RedirectResponse(url="/login", status_code=303)
 
 
 # ============================================================
@@ -3818,7 +3831,7 @@ async def admin_process_agency_order(
 async def delete_agency_order(
     order_id: int,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     order = db.query(models.AgencyOrder).get(order_id)
     if order:
@@ -3830,7 +3843,7 @@ async def delete_agency_order(
 async def convert_agency_order_to_main(
     order_id: int,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     agency_order = db.query(models.AgencyOrder).get(order_id)
     if not agency_order:
@@ -3892,7 +3905,7 @@ async def convert_agency_order_to_main(
 async def reset_agency_password(
     customer_id: int,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     import random
     import string
@@ -3907,7 +3920,7 @@ async def reset_agency_password(
 async def send_customer_account_info(
     customer_id: int,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     customer = db.query(models.Customer).get(customer_id)
     if not customer or not customer.is_agency or not customer.email:
@@ -4005,7 +4018,7 @@ async def admin_notification_count(db: Session = Depends(get_db), user: models.U
 async def admin_invoice_dispatch(
     request: Request,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     today_jst = jst_today()
     # すべての未入金・未発行の請求書を取得 (発行済みに移行していないもの)
@@ -4055,7 +4068,7 @@ async def dispatch_invoices_email(
     request: Request,
     invoice_ids: list[int] = Form([]),
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     if not invoice_ids:
         return RedirectResponse(url="/admin/invoice-dispatch?error=1", status_code=303)
@@ -4198,7 +4211,7 @@ async def read_notification(
 async def admin_notifications(
     request: Request,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     notifications = db.query(models.Notification).filter(
         models.Notification.target_type == "admin"
@@ -4229,7 +4242,7 @@ async def read_and_redirect(
     request: Request,
     next: str,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     # 本来はIDを渡すべきだが、とりあえず最新の未読を既読にするか、クエリで渡す
     # または dispatch.html などで ID を渡すように URL を組む
@@ -4245,7 +4258,7 @@ async def read_and_redirect(
 async def delete_notification(
     notification_id: int,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     n = db.query(models.Notification).get(notification_id)
     if n:
@@ -4257,7 +4270,7 @@ async def delete_notification(
 async def mark_notification_read_post(
     notification_id: int,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     n = db.query(models.Notification).get(notification_id)
     if n:
@@ -4271,7 +4284,7 @@ async def mark_notification_read_post(
 async def admin_settings(
     request: Request, 
     db: Session = Depends(get_db), 
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     settings = db.query(models.SystemSetting).all()
     settings_dict = {s.key: s.value for s in settings if s.key}
@@ -4293,7 +4306,7 @@ async def admin_settings_save(
     smtp_from: str = Form(""),
     notification_email: str = Form(""),
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     data = {
         "smtp_host": smtp_host.strip(),
@@ -4326,7 +4339,7 @@ async def test_smtp_connection(
     smtp_user: str = Form(""),
     smtp_pass: str = Form(""),
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     import smtplib, io, sys
     port = int(smtp_port) if smtp_port.isdigit() else 587
@@ -4384,18 +4397,14 @@ async def test_smtp_connection(
 
 # --- Location & Stock Movement (拠点・在庫移動管理) ---
 @app.get("/admin/locations", response_class=HTMLResponse)
-async def list_locations(request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
-    if not user.is_admin:
-        return RedirectResponse(url="/", status_code=303)
+async def list_locations(request: Request, db: Session = Depends(get_db), user: models.User = Depends(require_admin_user)):
     locations = db.query(models.Location).all()
     return templates.TemplateResponse(request=request, name="admin/locations.html", context={
         "request": request, "active_page": "admin", "locations": locations, "user": user
     })
 
 @app.post("/admin/locations/new")
-async def create_location(name: str = Form(...), db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
-    if not user.is_admin:
-        return RedirectResponse(url="/", status_code=303)
+async def create_location(name: str = Form(...), db: Session = Depends(get_db), user: models.User = Depends(require_admin_user)):
     loc = models.Location(name=name)
     db.add(loc)
     db.commit()
@@ -4430,7 +4439,19 @@ async def process_inventory_move(
     return RedirectResponse(url="/products", status_code=303)
 
 @app.get("/admin/fix-inventory-magic", response_class=HTMLResponse)
-async def fix_inventory_magic(db: Session = Depends(get_db)):
+async def fix_inventory_magic_confirm(user: models.User = Depends(require_admin_user)):
+    return HTMLResponse("""
+    <html><body style="font-family:sans-serif;padding:30px;line-height:1.6;">
+    <h1>在庫補正確認</h1>
+    <p style="color:#c0392b;font-weight:bold;">この操作は全商品の拠点別在庫を本社倉庫へ集約し、指定数量で上書きします。GETアクセスでは実行されません。</p>
+    <form method="post" action="/admin/fix-inventory-magic" onsubmit="return confirm('本当に実行しますか？');">
+        <button type="submit" style="padding:12px 20px;background:#c0392b;color:white;border:0;border-radius:6px;">実行する</button>
+    </form>
+    </body></html>
+    """)
+
+@app.post("/admin/fix-inventory-magic", response_class=HTMLResponse)
+async def fix_inventory_magic(db: Session = Depends(get_db), user: models.User = Depends(require_admin_user)):
     # 1. 拠点をすべて本社にする（全商品）
     main_loc = db.query(models.Location).filter_by(name="本社倉庫").first()
     if not main_loc:
@@ -4476,7 +4497,7 @@ async def fix_inventory_magic(db: Session = Depends(get_db)):
 @app.get("/admin/cleanup-unpaid-invoices", response_class=HTMLResponse)
 async def cleanup_unpaid_invoices_page(
     request: Request,
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     return HTMLResponse("""
     <html><body style="font-family:sans-serif;padding:2rem;">
@@ -4494,7 +4515,7 @@ async def cleanup_unpaid_invoices_page(
 async def cleanup_unpaid_invoices_execute(
     request: Request,
     db: Session = Depends(get_db),
-    user: models.User = Depends(get_active_user)
+    user: models.User = Depends(require_admin_user)
 ):
     results = []
     try:
@@ -4568,7 +4589,19 @@ async def cleanup_unpaid_invoices_execute(
 
 # --- 100% Resolution: Power Cleanup Route ---
 @app.get("/admin/power-cleanup", response_class=HTMLResponse)
-async def admin_power_cleanup(request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+async def admin_power_cleanup_confirm(request: Request, user: models.User = Depends(require_admin_user)):
+    return HTMLResponse("""
+    <html><body style="font-family:sans-serif;padding:30px;line-height:1.6;">
+    <h1>請求書クリーンアップ確認</h1>
+    <p style="color:#c0392b;font-weight:bold;">この操作は古い請求書の紐付けを解除し、対象請求書を削除します。GETアクセスでは実行されません。</p>
+    <form method="post" action="/admin/power-cleanup" onsubmit="return confirm('本当に実行しますか？');">
+        <button type="submit" style="padding:12px 20px;background:#c0392b;color:white;border:0;border-radius:6px;">実行する</button>
+    </form>
+    </body></html>
+    """)
+
+@app.post("/admin/power-cleanup", response_class=HTMLResponse)
+async def admin_power_cleanup(request: Request, db: Session = Depends(get_db), user: models.User = Depends(require_admin_user)):
     """
     100%解決のための最終手段: 
     受注データを1件も消さずに、2026-04-11より前の受注に紐付く「請求書データ」のみを一掃します。
