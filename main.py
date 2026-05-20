@@ -330,6 +330,175 @@ def billing_period_for(year: int, month: int, closing_day: int):
     period_start = get_effective_date(prev_month.year, prev_month.month, closing_day) + datetime.timedelta(days=1)
     return period_start, period_end
 
+def consolidate_monthly_invoice_for_customer(
+    db: Session,
+    cust: models.Customer,
+    year: int,
+    month: int,
+    source_label: str,
+) -> Optional[dict]:
+    """顧客ごとの締め期間を1枚の月次合算請求書へ安全に統合する。"""
+    customer_closing_day = cust.closing_day or 31
+    start_date, end_date = billing_period_for(year, month, customer_closing_day)
+    monthly_inv_num = f"INV-{year}{month:02d}-{cust.id:04d}"
+
+    invoice = db.query(models.Invoice).filter_by(invoice_number=monthly_inv_num).first()
+    if invoice and is_invoice_locked(invoice):
+        return None
+
+    standard_candidates = billable_standard_orders_query(db).join(models.Quotation).filter(
+        models.Quotation.customer_id == cust.id,
+        models.Order.order_date >= datetime.datetime.combine(start_date, datetime.time.min),
+        models.Order.order_date <= datetime.datetime.combine(end_date, datetime.time.max),
+    ).all()
+
+    agency_candidates = billable_agency_orders_query(db).filter(
+        models.AgencyOrder.customer_id == cust.id,
+        models.AgencyOrder.order_date >= datetime.datetime.combine(start_date, datetime.time.min),
+        models.AgencyOrder.order_date <= datetime.datetime.combine(end_date, datetime.time.max),
+    ).all()
+
+    standard_orders = []
+    for order in standard_candidates:
+        linked_invoice = db.query(models.Invoice).get(order.invoice_id) if order.invoice_id else None
+        if linked_invoice and linked_invoice.id != getattr(invoice, "id", None) and is_invoice_locked(linked_invoice):
+            continue
+        standard_orders.append(order)
+
+    agency_orders = []
+    for agency_order in agency_candidates:
+        linked_invoice = db.query(models.Invoice).get(agency_order.invoice_id) if agency_order.invoice_id else None
+        if linked_invoice and linked_invoice.id != getattr(invoice, "id", None) and is_invoice_locked(linked_invoice):
+            continue
+        agency_orders.append(agency_order)
+
+    if not standard_orders and not agency_orders:
+        return None
+
+    selected_standard_ids = {o.id for o in standard_orders}
+    selected_agency_ids = {ao.id for ao in agency_orders}
+    other_invoice_ids = {
+        o.invoice_id
+        for o in standard_orders
+        if o.invoice_id and (not invoice or o.invoice_id != invoice.id)
+    }
+    other_invoice_ids.update(
+        ao.invoice_id
+        for ao in agency_orders
+        if ao.invoice_id and (not invoice or ao.invoice_id != invoice.id)
+    )
+
+    for old_inv_id in other_invoice_ids:
+        old_inv = db.query(models.Invoice).get(old_inv_id)
+        if not old_inv or is_invoice_locked(old_inv):
+            continue
+
+        for old_order in list(old_inv.orders):
+            if old_order.id in selected_standard_ids:
+                old_order.invoice_id = None
+
+        for old_agency_order in db.query(models.AgencyOrder).filter_by(invoice_id=old_inv.id).all():
+            if old_agency_order.id in selected_agency_ids:
+                old_agency_order.invoice_id = None
+
+        db.flush()
+        remaining_standard_orders = db.query(models.Order).filter_by(invoice_id=old_inv.id).all()
+        remaining_agency_orders = db.query(models.AgencyOrder).filter_by(invoice_id=old_inv.id).all()
+        remaining_standard_total = sum(int(o.total_amount or 0) for o in remaining_standard_orders)
+        remaining_agency_total = sum(int(ao.total_amount or 0) for ao in remaining_agency_orders)
+        if remaining_standard_orders or remaining_agency_orders:
+            old_inv.total_amount = float(remaining_standard_total + remaining_agency_total)
+        else:
+            db.delete(old_inv)
+
+    db.flush()
+
+    due_date_raw = calculate_payment_date(end_date, cust.payment_term_months or 1, cust.payment_day or 31)
+    due_date = next_business_day(due_date_raw)
+    total_standard = sum(int(o.total_amount or 0) for o in standard_orders)
+    total_agency = sum(int(ao.total_amount or 0) for ao in agency_orders)
+    grand_total_excl_tax = total_standard + total_agency
+
+    memo_label = f"{start_date.strftime('%Y/%m/%d')}〜{end_date.strftime('%Y/%m/%d')} 合算請求書（{source_label}）"
+    if not invoice:
+        invoice = models.Invoice(
+            customer_id=cust.id,
+            invoice_number=monthly_inv_num,
+            issue_date=datetime.datetime.combine(end_date, datetime.time.min),
+            due_date=datetime.datetime.combine(due_date, datetime.time.min),
+            total_amount=float(grand_total_excl_tax),
+            status=models.InvoiceStatus.UNPAID,
+            delivery_status="UNSENT",
+            memo=memo_label,
+        )
+        db.add(invoice)
+        db.flush()
+    else:
+        invoice.total_amount = float(grand_total_excl_tax)
+        invoice.issue_date = datetime.datetime.combine(end_date, datetime.time.min)
+        invoice.due_date = datetime.datetime.combine(due_date, datetime.time.min)
+        invoice.memo = memo_label
+
+    for order in standard_orders:
+        order.invoice_id = invoice.id
+
+    existing_shadows = db.query(models.Order).filter(
+        models.Order.invoice_id == invoice.id,
+        models.Order.order_number.contains("SHADOW"),
+    ).all()
+    for shadow in existing_shadows:
+        if shadow.quotation:
+            db.query(models.QuotationItem).filter_by(quotation_id=shadow.quotation.id).delete()
+            db.delete(shadow.quotation)
+        db.delete(shadow)
+    db.flush()
+
+    if agency_orders:
+        shadow_quote = models.Quotation(
+            customer_id=cust.id,
+            quote_number=f"Q-SHADOW-{monthly_inv_num}",
+            issue_date=end_date,
+            expiry_date=end_date + datetime.timedelta(days=30),
+            total_amount=float(total_agency),
+            status=models.QuoteStatus.ORDERED,
+            memo=f"代理店発注集計分 ({len(agency_orders)}件)",
+        )
+        db.add(shadow_quote)
+        db.flush()
+
+        for agency_order in agency_orders:
+            agency_order.invoice_id = invoice.id
+            for item in agency_order.items:
+                qi = models.QuotationItem(
+                    quotation_id=shadow_quote.id,
+                    product_id=item.product_id,
+                    description=f"[{agency_order.order_date.strftime('%Y/%m/%d')} {agency_order.order_number}] {item.product_name}",
+                    quantity=item.quantity,
+                    unit_price=item.unit_price,
+                    subtotal=item.subtotal,
+                )
+                db.add(qi)
+
+        shadow_order = models.Order(
+            quotation_id=shadow_quote.id,
+            order_number=f"ORD-SHADOW-{monthly_inv_num}",
+            order_date=end_date,
+            invoice_id=invoice.id,
+            total_amount=float(total_agency),
+            status=models.OrderStatus.COMPLETED,
+            memo="代理店発注合算シャドウ",
+        )
+        db.add(shadow_order)
+
+    return {
+        "invoice": invoice,
+        "start_date": start_date,
+        "end_date": end_date,
+        "standard_orders": standard_orders,
+        "agency_orders": agency_orders,
+        "total_excl_tax": grand_total_excl_tax,
+    }
+
 def calculate_spray_price(product, case_count: int, rank: models.CustomerRank) -> int:
     """
     熊スプレーのケース数に応じた動的価格計算
@@ -438,131 +607,44 @@ async def test_ping():
     return {"ping": "pong"}
 
 def closing_notification_job():
-    """毎日朝8時に実行される、締め日の判定と請求書自動発行（未発行状態で作成）処理"""
+    """毎日朝8時に実行される、締め日の判定と月次合算請求書の自動生成/統合処理"""
     db = SessionLocal()
     try:
         now_jst = jst_now()
         today = now_jst.date()
-        # 全顧客を取得して締め日を判定
         customers = db.query(models.Customer).all()
         for cust in customers:
             if not cust.closing_day:
                 continue
-            
-            # 今日が締め日の場合のみ処理実行
-            if is_closing_day(today, cust.closing_day):
-                # 1. 未請求の標準受注を抽出 (出荷済み or 完了 のみ)
-                # システム設定から集計開始日を取得（管理画面の billing_start_date キーで変更可能）
-                safe_date_str = get_system_setting(db, "billing_start_date", "2020-01-01")
-                try:
-                    safe_date = datetime.datetime.strptime(safe_date_str, "%Y-%m-%d")
-                except ValueError:
-                    safe_date = datetime.datetime(2020, 1, 1)
-                standard_orders = billable_standard_orders_query(db).join(models.Quotation).filter(
-                    models.Quotation.customer_id == cust.id,
-                    models.Order.invoice_id == None,
-                    models.Order.order_date >= safe_date,
-                    models.Order.order_date <= datetime.datetime.combine(today, datetime.time.max),
-                ).all()
+            if not is_closing_day(today, cust.closing_day):
+                continue
 
-                # 2. 未請求の代理店受注を抽出 (処理済みのみ)
-                agency_orders = billable_agency_orders_query(db).filter(
-                    models.AgencyOrder.customer_id == cust.id,
-                    models.AgencyOrder.invoice_id == None,
-                    models.AgencyOrder.order_date >= safe_date,
-                    models.AgencyOrder.order_date <= datetime.datetime.combine(today, datetime.time.max)
-                ).all()
-                
-                if not standard_orders and not agency_orders:
-                    continue
-                
-                # 請求番号の決定 (INV-YYYYMM-CUSTID)
-                inv_num = f"INV-{today.strftime('%Y%m')}-{cust.id:04d}"
-                existing = db.query(models.Invoice).filter_by(invoice_number=inv_num).first()
-                if existing:
-                    print(f"INFO: Automated invoice already exists for Customer {cust.id}: {inv_num}. Skipping duplicate run.")
-                    continue
+            result = consolidate_monthly_invoice_for_customer(
+                db=db,
+                cust=cust,
+                year=today.year,
+                month=today.month,
+                source_label="自動生成/締め統合",
+            )
+            if not result:
+                continue
 
-                # 支払期限の計算
-                due_date_raw = calculate_payment_date(today, cust.payment_term_months or 1, cust.payment_day or 31)
-                due_date = next_business_day(due_date_raw)
-                
-                # 合計金額の算出 (整数で計算し、float誤差を防止)
-                total_standard = sum(int(o.total_amount) for o in standard_orders)
-                total_agency = sum(int(o.total_amount) for o in agency_orders)
-                grand_total_excl_tax = total_standard + total_agency
-                
-                # 消費税計算 (10%固定、小数点以下切り捨て)
-                totals = invoice_tax_summary(grand_total_excl_tax)
-                grand_total_incl_tax = totals["total"]
+            invoice = result["invoice"]
+            standard_orders = result["standard_orders"]
+            agency_orders = result["agency_orders"]
+            totals = invoice_tax_summary(result["total_excl_tax"])
+            grand_total_incl_tax = totals["total"]
 
-                # 請求書の作成 (初期状態は「未入金」かつ「未発送/未メール」)
-                invoice = models.Invoice(
-                    customer_id=cust.id,
-                    invoice_number=inv_num,
-                    issue_date=datetime.datetime.combine(today, datetime.time.min),
-                    due_date=datetime.datetime.combine(due_date, datetime.time.min),
-                    total_amount=float(grand_total_excl_tax), # DBカラムがFloatのためキャスト
-                    status=models.InvoiceStatus.UNPAID,
-                    delivery_status="UNSENT",
-                    memo=f"{today.strftime('%m/%d')}締め 合算集計（自動生成）"
-                )
-                db.add(invoice)
-                db.flush()
-
-                # --- 標準受注の紐付け ---
-                for o in standard_orders:
-                    o.invoice_id = invoice.id
-                
-                # --- 代理店受注の紐付けとシャドウ受注の作成 ---
-                if agency_orders:
-                    # 代理店発注分を1つの「シャドウ受注」にまとめてInvoice.ordersに含める (PDF等での表示用)
-                    shadow_quote = models.Quotation(
-                        customer_id=cust.id,
-                        quote_number=f"Q-SHADOW-{inv_num}",
-                        issue_date=today,
-                        expiry_date=today + datetime.timedelta(days=30),
-                        total_amount=float(total_agency),
-                        status=models.QuoteStatus.ORDERED,
-                        memo=f"代理店発注集計分 ({len(agency_orders)}件)"
-                    )
-                    db.add(shadow_quote)
-                    db.flush()
-
-                    for ao in agency_orders:
-                        ao.invoice_id = invoice.id  # 代理店発注に請求書IDをセット
-                        for item in ao.items:
-                            qi = models.QuotationItem(
-                                quotation_id=shadow_quote.id,
-                                product_id=item.product_id,
-                                description=f"[{ao.order_date.strftime('%Y/%m/%d')} {ao.order_number}] {item.product_name}",
-                                quantity=item.quantity,
-                                unit_price=item.unit_price,
-                                subtotal=item.subtotal
-                            )
-                            db.add(qi)
-                    
-                    shadow_order = models.Order(
-                        quotation_id=shadow_quote.id,
-                        order_number=f"ORD-SHADOW-{inv_num}",
-                        order_date=today,
-                        invoice_id=invoice.id,
-                        total_amount=float(total_agency),
-                        status=models.OrderStatus.COMPLETED,
-                        memo="代理店発注合算シャドウ"
-                    )
-                    db.add(shadow_order)
-                
-                # 管理者への通知メール
-                try:
-                    order_numbers = [o.order_number for o in standard_orders] + [ao.order_number for ao in agency_orders]
-                    subject = f"【自動作成】本日締め日：{cust.company} 様の合算請求書を作成しました"
-                    body = f"""株式会社熊ノ護化研 担当者様
+            try:
+                order_numbers = [o.order_number for o in standard_orders] + [ao.order_number for ao in agency_orders]
+                subject = f"【自動作成】本日締め日：{cust.company or cust.name} 様の合算請求書を作成しました"
+                body = f"""株式会社熊ノ護化研 担当者様
 
 本日（{today.strftime('%Y/%m/%d')}）は、{cust.company or cust.name} 様の締め日です。
 以下の通り、複数の受注を1枚にまとめた合算請求書を自動作成しました。
 
 ■ 顧客名：{cust.company or cust.name}
+■ 請求書番号：{invoice.invoice_number}
 ■ 合算内容：合計 {len(standard_orders) + len(agency_orders)} 件の受注を統合
 ■ 合計請求額：¥{'{:,.0f}'.format(grand_total_incl_tax)} (税込)
 ■ 対象受注番号：{', '.join(order_numbers)}
@@ -573,17 +655,12 @@ def closing_notification_job():
 お客様の希望（{cust.invoice_delivery_method}）に合わせて、
 「メール送信」または「印刷・郵送」の操作を行ってください。
 """
-                    settings = db.query(models.SystemSetting).all()
-                    s_dict = {s.key: s.value for s in settings}
-                    target_email = s_dict.get("notification_email") or "info@kumanomorikaken.co.jp"
-                    
-                    # 管理者へメール通知を実行
-                    send_admin_notification(subject, body)
-                except Exception as email_err:
-                    print(f"WARNING: Email notification failed: {str(email_err)}")
+                send_admin_notification(subject, body)
+            except Exception as email_err:
+                print(f"WARNING: Email notification failed: {str(email_err)}")
 
-                db.commit()
-                print(f"INFO: Automated Invoice generated for Customer {cust.id}: {inv_num}")
+            db.commit()
+            print(f"INFO: Automated monthly invoice consolidated for Customer {cust.id}: {invoice.invoice_number}")
 
     except Exception as e:
         db.rollback()
@@ -2114,8 +2191,6 @@ async def admin_generate_monthly_invoices(
     user: models.User = Depends(require_admin_user)
 ):
     """指定した年月の受注をスキャンし、顧客ごとに1枚の合算請求書を生成・更新する"""
-    from utils.date_utils import calculate_payment_date, next_business_day
-    
     target_closing_day = None
     if closing_day_filter:
         try:
@@ -2129,165 +2204,22 @@ async def admin_generate_monthly_invoices(
     count = 0
     for cust in customers:
         customer_closing_day = cust.closing_day or 31
-        if target_closing_day:
+        if target_closing_day is not None:
             if target_closing_day >= 31:
                 if customer_closing_day < 31:
                     continue
             elif customer_closing_day != target_closing_day:
                 continue
 
-        start_date, end_date = billing_period_for(year, month, customer_closing_day)
-        # その月の「標準受注」と「代理店受注」を取得
-        # ※すでに請求書があるものも含めて、顧客ごとの締め期間内データを対象にする（統合のため）
-        standard_candidates = billable_standard_orders_query(db).join(models.Quotation).filter(
-            models.Quotation.customer_id == cust.id,
-            models.Order.order_date >= datetime.datetime.combine(start_date, datetime.time.min),
-            models.Order.order_date <= datetime.datetime.combine(end_date, datetime.time.max)
-        ).all()
-        
-        agency_candidates = billable_agency_orders_query(db).filter(
-            models.AgencyOrder.customer_id == cust.id,
-            models.AgencyOrder.order_date >= datetime.datetime.combine(start_date, datetime.time.min),
-            models.AgencyOrder.order_date <= datetime.datetime.combine(end_date, datetime.time.max),
-        ).all()
-        
-        # ターゲットとなる合算請求書番号 (INV-YYYYMM-CUSTID)
-        monthly_inv_num = f"INV-{year}{month:02d}-{cust.id:04d}"
-        
-        # 既存の合算請求書があるか確認
-        invoice = db.query(models.Invoice).filter_by(invoice_number=monthly_inv_num).first()
-        
-        # 顧客へ送付済み/入金済みの請求書は、会計上の安全のため上書きしない
-        if invoice and is_invoice_locked(invoice):
-            continue
-
-        standard_orders = []
-        for order in standard_candidates:
-            linked_invoice = db.query(models.Invoice).get(order.invoice_id) if order.invoice_id else None
-            if linked_invoice and linked_invoice.id != getattr(invoice, "id", None) and is_invoice_locked(linked_invoice):
-                continue
-            standard_orders.append(order)
-
-        agency_orders = []
-        for agency_order in agency_candidates:
-            linked_invoice = db.query(models.Invoice).get(agency_order.invoice_id) if agency_order.invoice_id else None
-            if linked_invoice and linked_invoice.id != getattr(invoice, "id", None) and is_invoice_locked(linked_invoice):
-                continue
-            agency_orders.append(agency_order)
-
-        if not standard_orders and not agency_orders:
-            continue
-
-        # バラバラに発行された「他の請求書」を特定して解体する（統合処理）
-        # ※月次合算用以外の請求書に紐付いている注文を救い出す
-        other_invoices = set()
-        for o in standard_orders:
-            if o.invoice_id and (not invoice or o.invoice_id != invoice.id):
-                other_inv = db.query(models.Invoice).get(o.invoice_id)
-                if other_inv and not is_invoice_locked(other_inv):
-                    other_invoices.add(other_inv)
-        for ao in agency_orders:
-            if ao.invoice_id and (not invoice or ao.invoice_id != invoice.id):
-                other_inv = db.query(models.Invoice).get(ao.invoice_id)
-                if other_inv and not is_invoice_locked(other_inv):
-                    other_invoices.add(other_inv)
-        
-        # 解体実行: 他の請求書から紐付けを解除し、その請求書を削除
-        for old_inv in other_invoices:
-            # 紐付いていた他の受注をすべて一旦フリーにする
-            for o in old_inv.orders:
-                o.invoice_id = None
-            for ao in db.query(models.AgencyOrder).filter_by(invoice_id=old_inv.id).all():
-                ao.invoice_id = None
-            db.delete(old_inv)
-        
-        db.flush()
-
-        # 支払期限の計算 (月末を締め日と仮定して算出)
-        due_date_raw = calculate_payment_date(end_date, cust.payment_term_months or 1, cust.payment_day or 31)
-        due_date = next_business_day(due_date_raw)
-        
-        # 合計金額の再算出
-        total_standard = sum(int(o.total_amount) for o in standard_orders)
-        total_agency = sum(int(o.total_amount) for o in agency_orders)
-        grand_total_excl_tax = total_standard + total_agency
-        
-        if not invoice:
-            # 新規作成
-            invoice = models.Invoice(
-                customer_id=cust.id,
-                invoice_number=monthly_inv_num,
-                issue_date=datetime.datetime.combine(end_date, datetime.time.min),
-                due_date=datetime.datetime.combine(due_date, datetime.time.min),
-                total_amount=float(grand_total_excl_tax),
-                status=models.InvoiceStatus.UNPAID,
-                delivery_status="UNSENT",
-                memo=f"{start_date.strftime('%Y/%m/%d')}〜{end_date.strftime('%Y/%m/%d')} 合算請求書（手動実行による生成/統合）"
-            )
-            db.add(invoice)
-            db.flush()
-        else:
-            # 更新
-            invoice.total_amount = float(grand_total_excl_tax)
-            invoice.issue_date = datetime.datetime.combine(end_date, datetime.time.min)
-            invoice.due_date = datetime.datetime.combine(due_date, datetime.time.min)
-            invoice.memo = f"{start_date.strftime('%Y/%m/%d')}〜{end_date.strftime('%Y/%m/%d')} 合算請求書（再実行による更新）"
-
-        # 注文を紐付け直す
-        for o in standard_orders:
-            o.invoice_id = invoice.id
-        
-        # 代理店分（シャドウ受注）の再生成
-        # 既存のシャドウがあれば削除
-        existing_shadows = db.query(models.Order).filter(
-            models.Order.invoice_id == invoice.id,
-            models.Order.order_number.contains("SHADOW")
-        ).all()
-        for s in existing_shadows:
-            if s.quotation:
-                db.query(models.QuotationItem).filter_by(quotation_id=s.quotation.id).delete()
-                db.delete(s.quotation)
-            db.delete(s)
-        db.flush()
-
-        if agency_orders:
-            shadow_quote = models.Quotation(
-                customer_id=cust.id,
-                quote_number=f"Q-SHADOW-{monthly_inv_num}",
-                issue_date=end_date,
-                expiry_date=end_date + datetime.timedelta(days=30),
-                total_amount=float(total_agency),
-                status=models.QuoteStatus.ORDERED,
-                memo=f"代理店発注集計分 ({len(agency_orders)}件)"
-            )
-            db.add(shadow_quote)
-            db.flush()
-
-            for ao in agency_orders:
-                ao.invoice_id = invoice.id
-                for item in ao.items:
-                    qi = models.QuotationItem(
-                        quotation_id=shadow_quote.id,
-                        product_id=item.product_id,
-                        description=f"[{ao.order_date.strftime('%Y/%m/%d')} {ao.order_number}] {item.product_name}",
-                        quantity=item.quantity,
-                        unit_price=item.unit_price,
-                        subtotal=item.subtotal
-                    )
-                    db.add(qi)
-            
-            shadow_order = models.Order(
-                quotation_id=shadow_quote.id,
-                order_number=f"ORD-SHADOW-{monthly_inv_num}",
-                order_date=end_date,
-                invoice_id=invoice.id,
-                total_amount=float(total_agency),
-                status=models.OrderStatus.COMPLETED,
-                memo="代理店発注合算シャドウ"
-            )
-            db.add(shadow_order)
-            
-        count += 1
+        result = consolidate_monthly_invoice_for_customer(
+            db=db,
+            cust=cust,
+            year=year,
+            month=month,
+            source_label="手動実行による生成/統合",
+        )
+        if result:
+            count += 1
     
     db.commit()
     return RedirectResponse(url=f"/admin/invoice-dispatch?success_gen={count}", status_code=303)
@@ -4026,9 +3958,10 @@ async def admin_invoice_dispatch(
     user: models.User = Depends(require_admin_user)
 ):
     today_jst = jst_today()
-    # すべての未入金・未発行の請求書を取得 (発行済みに移行していないもの)
+    # 一括発行画面は、未入金かつ未送付の請求書だけを送付待ちとして表示する
     unpaid_invoices = db.query(models.Invoice).filter(
-        models.Invoice.status == models.InvoiceStatus.UNPAID
+        models.Invoice.status == models.InvoiceStatus.UNPAID,
+        models.Invoice.delivery_status == "UNSENT",
     ).all()
     
     email_invoices = []
