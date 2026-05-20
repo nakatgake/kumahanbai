@@ -21,6 +21,7 @@ from itsdangerous import URLSafeSerializer
 from fastapi import HTTPException
 import smtplib
 import ssl
+from zoneinfo import ZoneInfo
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
     from utils.date_utils import is_closing_day, calculate_payment_date, next_business_day, get_next_closing_date, get_effective_date
@@ -31,6 +32,14 @@ except ImportError:
 
 from email.message import EmailMessage
 from utils.email import send_notification, send_admin_notification
+
+JST = ZoneInfo("Asia/Tokyo")
+
+def jst_now() -> datetime.datetime:
+    return datetime.datetime.now(JST)
+
+def jst_today() -> datetime.date:
+    return jst_now().date()
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
@@ -425,7 +434,8 @@ def closing_notification_job():
     """毎日朝8時に実行される、締め日の判定と請求書自動発行（未発行状態で作成）処理"""
     db = SessionLocal()
     try:
-        today = datetime.date.today()
+        now_jst = jst_now()
+        today = now_jst.date()
         # 全顧客を取得して締め日を判定
         customers = db.query(models.Customer).all()
         for cust in customers:
@@ -463,7 +473,7 @@ def closing_notification_job():
                 inv_num = f"INV-{today.strftime('%Y%m')}-{cust.id:04d}"
                 existing = db.query(models.Invoice).filter_by(invoice_number=inv_num).first()
                 if existing:
-                    inv_num = f"{inv_num}-REV-{datetime.datetime.now().strftime('%H%M')}"
+                    inv_num = f"{inv_num}-REV-{now_jst.strftime('%H%M')}"
 
                 # 支払期限の計算
                 due_date_raw = calculate_payment_date(today, cust.payment_term_months or 1, cust.payment_day or 31)
@@ -631,7 +641,7 @@ async def dashboard(
         dispatch_pending = db.query(models.Invoice).filter(models.Invoice.delivery_status == "UNSENT").count()
         
         # 本日の自動締処理分
-        today_start = datetime.datetime.combine(datetime.date.today(), datetime.time.min)
+        today_start = datetime.datetime.combine(jst_today(), datetime.time.min)
         auto_count = db.query(models.Invoice).filter(
             models.Invoice.issue_date >= today_start,
             models.Invoice.memo.like("%自動生成%")
@@ -2091,18 +2101,34 @@ async def bulk_print_invoices_post(request: Request, db: Session = Depends(get_d
 async def admin_generate_monthly_invoices(
     year: int = Form(...),
     month: int = Form(...),
+    closing_day_filter: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
     """指定した年月の受注をスキャンし、顧客ごとに1枚の合算請求書を生成・更新する"""
     from utils.date_utils import calculate_payment_date, next_business_day
     
+    target_closing_day = None
+    if closing_day_filter:
+        try:
+            target_closing_day = int(closing_day_filter)
+        except ValueError:
+            target_closing_day = None
+
     # 処理対象の顧客（その月に売上がある顧客）を抽出
     customers = db.query(models.Customer).all()
     
     count = 0
     for cust in customers:
-        start_date, end_date = billing_period_for(year, month, cust.closing_day or 31)
+        customer_closing_day = cust.closing_day or 31
+        if target_closing_day:
+            if target_closing_day >= 31:
+                if customer_closing_day < 31:
+                    continue
+            elif customer_closing_day != target_closing_day:
+                continue
+
+        start_date, end_date = billing_period_for(year, month, customer_closing_day)
         # その月の「標準受注」と「代理店受注」を取得
         # ※すでに請求書があるものも含めて、顧客ごとの締め期間内データを対象にする（統合のため）
         standard_candidates = billable_standard_orders_query(db).join(models.Quotation).filter(
@@ -3981,6 +4007,7 @@ async def admin_invoice_dispatch(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
+    today_jst = jst_today()
     # すべての未入金・未発行の請求書を取得 (発行済みに移行していないもの)
     unpaid_invoices = db.query(models.Invoice).filter(
         models.Invoice.status == models.InvoiceStatus.UNPAID
@@ -4012,6 +4039,9 @@ async def admin_invoice_dispatch(
         "postal_invoices": postal_invoices,
         "success_msg": success_msg,
         "error_msg": error_msg,
+        "current_year": today_jst.year,
+        "current_month": today_jst.month,
+        "today_closing_day": today_jst.day,
         "user": user
     })
 

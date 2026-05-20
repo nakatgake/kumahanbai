@@ -35,19 +35,24 @@
         月次合算請求書の「今すぐ実行・統合」
     </h3>
     <p style="font-size: 0.85rem; color: #666; margin-bottom: 1.2rem;">
-        指定した年月の注文を顧客ごとに1枚にまとめます。すでに個別発行済みの請求書がある場合も、自動的に1枚に統合（上書き）し直します。
+        指定した年月と締め日の注文を顧客ごとに1枚にまとめます。すでに個別発行済みの請求書がある場合も、自動的に1枚に統合（上書き）し直します。
     </p>
     <form action="/admin/invoice-generate-monthly" method="post" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
         <div style="display: flex; align-items: center; gap: 8px;">
             <select name="year" class="form-control" style="width: 100px; padding: 6px;">
-                {% set current_year = 2026 %}
                 <option value="{{ current_year }}" selected>{{ current_year }}年</option>
                 <option value="{{ current_year - 1 }}">{{ current_year - 1 }}年</option>
             </select>
             <select name="month" class="form-control" style="width: 80px; padding: 6px;">
                 {% for m in range(1, 13) %}
-                <option value="{{ m }}" {% if m == 4 %}selected{% endif %}>{{ m }}月</option>
+                <option value="{{ m }}" {% if m == current_month %}selected{% endif %}>{{ m }}月</option>
                 {% endfor %}
+            </select>
+            <select name="closing_day_filter" class="form-control" style="width: 150px; padding: 6px;">
+                <option value="{{ today_closing_day }}" selected>本日の締め日（{{ today_closing_day }}日）</option>
+                <option value="">全締め日</option>
+                <option value="20">20日締め</option>
+                <option value="31">月末締め</option>
             </select>
         </div>
         <button type="submit" class="btn btn-primary" style="padding: 8px 20px; font-weight: bold; background: #3498db;">
