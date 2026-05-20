@@ -2628,7 +2628,12 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
             pdf.set_font("Japanese" if font_found else "helvetica", "", 8)
             pdf.set_text_color(*primary_color)
             pdf.cell(10, 6, "", border=1, fill=True)
-            pdf.cell(180, 6, f" 【受注日: {order.order_date.strftime('%Y/%m/%d')} ｜ No: {order.order_number}】", border=1, fill=True)
+            is_shadow_order = order.order_number and "SHADOW" in order.order_number
+            if is_shadow_order:
+                separator_text = f" 【代理店発注集計 ｜ No: {order.order_number}】"
+            else:
+                separator_text = f" 【受注日: {order.order_date.strftime('%Y/%m/%d')} ｜ No: {order.order_number}】"
+            pdf.cell(180, 6, separator_text, border=1, fill=True)
             pdf.ln()
             
             pdf.set_text_color(51, 51, 51)

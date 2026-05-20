@@ -339,11 +339,16 @@
                     {# 合算請求書の場合のループ処理 #}
                     {% set row_count = namespace(value=0) %}
                     {% for order in doc.orders %}
+                        {% set is_shadow_order = order.order_number and 'SHADOW' in order.order_number %}
                         {# 注文ごとのヘッダー行 #}
                         <tr style="background-color: #f0f4f8;">
                             <td class="row-no"></td>
                             <td colspan="4" style="font-weight: bold; font-size: 8pt; color: var(--primary);">
-                                【受注日: {{ order.order_date.strftime('%Y/%m/%d') }} ｜ No: {{ order.order_number }}】
+                                {% if is_shadow_order %}
+                                    【代理店発注集計 ｜ No: {{ order.order_number }}】
+                                {% else %}
+                                    【受注日: {{ order.order_date.strftime('%Y/%m/%d') }} ｜ No: {{ order.order_number }}】
+                                {% endif %}
                             </td>
                         </tr>
                         {% if order.quotation %}
@@ -351,7 +356,7 @@
                                 {% set row_count.value = row_count.value + 1 %}
                                 <tr>
                                     <td class="row-no">{{ row_count.value }}</td>
-                                    <td class="row-desc">{{ item.product.name if item.product else item.description }}</td>
+                                    <td class="row-desc">{{ item.description if is_shadow_order else (item.product.name if item.product else item.description) }}</td>
                                     <td class="row-qty">{{ item.quantity }}</td>
                                     <td class="row-price">{{ "{:,.0f}".format(item.unit_price) }}</td>
                                     <td class="row-subtotal">{{ "{:,.0f}".format(item.subtotal) }}</td>
