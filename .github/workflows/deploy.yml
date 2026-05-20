@@ -30,6 +30,14 @@ jobs:
                   -C /var/www kumanomori
               cp "$BACKUP_DIR/release_$TS.tar.gz" "$BACKUP_DIR/latest.tar.gz"
             fi
+            if [ -f /etc/nginx/sites-available/kumanomori ]; then
+              cp -a /etc/nginx/sites-available/kumanomori "$BACKUP_DIR/latest.nginx.conf"
+            fi
+            if [ -e /etc/nginx/sites-enabled/default ]; then
+              cp -a /etc/nginx/sites-enabled/default "$BACKUP_DIR/latest.nginx.default"
+            else
+              rm -f "$BACKUP_DIR/latest.nginx.default"
+            fi
 
       - name: Copy files via scp
         uses: appleboy/scp-action@v0.1.7
@@ -55,12 +63,17 @@ jobs:
               venv/bin/python -m py_compile main.py models.py database.py billing_integrity_check.py
             fi
             cp deploy/kumanomori.service /etc/systemd/system/kumanomori.service
+            cp deploy/nginx.conf /etc/nginx/sites-available/kumanomori
+            ln -sfn /etc/nginx/sites-available/kumanomori /etc/nginx/sites-enabled/kumanomori
+            rm -f /etc/nginx/sites-enabled/default
+            nginx -t
             systemctl daemon-reload
             systemctl restart kumanomori
             systemctl restart nginx
             ok=0
             for i in $(seq 1 12); do
-              if curl -fsS --max-time 5 http://127.0.0.1:8000/test-ping; then
+              if curl -fsS --max-time 5 http://127.0.0.1:8000/test-ping \
+                 && curl -fsS --max-time 5 http://127.0.0.1/test-ping; then
                 ok=1
                 break
               fi
@@ -73,7 +86,14 @@ jobs:
               if [ -f /root/kumanomori_backups/latest.tar.gz ]; then
                 tar -xzf /root/kumanomori_backups/latest.tar.gz -C /var/www
               fi
+              if [ -f /root/kumanomori_backups/latest.nginx.conf ]; then
+                cp -a /root/kumanomori_backups/latest.nginx.conf /etc/nginx/sites-available/kumanomori
+              fi
+              if [ -e /root/kumanomori_backups/latest.nginx.default ]; then
+                cp -a /root/kumanomori_backups/latest.nginx.default /etc/nginx/sites-enabled/default
+              fi
               systemctl start kumanomori
+              nginx -t || true
               systemctl restart nginx
               exit 1
             fi
