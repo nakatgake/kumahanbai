@@ -63,6 +63,7 @@ jobs:
               venv/bin/python -m py_compile main.py models.py database.py billing_integrity_check.py
             fi
             cp deploy/kumanomori.service /etc/systemd/system/kumanomori.service
+            mkdir -p /var/www/letsencrypt
             cp deploy/nginx.conf /etc/nginx/sites-available/kumanomori
             ln -sfn /etc/nginx/sites-available/kumanomori /etc/nginx/sites-enabled/kumanomori
             rm -f /etc/nginx/sites-enabled/default
@@ -74,12 +75,15 @@ jobs:
               apt-get update
               DEBIAN_FRONTEND=noninteractive apt-get install -y certbot python3-certbot-nginx
             fi
-            certbot --nginx --non-interactive --agree-tos \
+            certbot certonly --webroot \
+              -w /var/www/letsencrypt \
+              --non-interactive --agree-tos \
               --email info@kumanomorikaken.co.jp \
               -d app.kumanomorikaken.co.jp \
-              --redirect
+              --keep-until-expiring
+            cp deploy/nginx-ssl.conf /etc/nginx/sites-available/kumanomori
             nginx -t
-            systemctl reload nginx
+            systemctl restart nginx
             ok=0
             for i in $(seq 1 12); do
               if curl -fsS --max-time 5 http://127.0.0.1:8000/test-ping \
