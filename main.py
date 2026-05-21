@@ -4016,6 +4016,7 @@ async def admin_invoice_dispatch(
         "current_month": selected_month,
         "today_closing_day": today_jst.day,
         "selected_closing_day": selected_closing_day,
+        "standard_closing_days": [5, 10, 15, 20, 25, 31],
         "user": user
     })
 

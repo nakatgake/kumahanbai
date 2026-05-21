@@ -50,9 +50,14 @@
             </select>
             <select name="closing_day_filter" class="form-control" style="width: 150px; padding: 6px;">
                 <option value="">全締め日</option>
-                <option value="{{ today_closing_day }}" {% if selected_closing_day == today_closing_day %}selected{% endif %}>本日の締め日（{{ today_closing_day }}日）</option>
-                <option value="20" {% if selected_closing_day == 20 %}selected{% endif %}>20日締め</option>
-                <option value="31" {% if selected_closing_day == 31 %}selected{% endif %}>月末締め</option>
+                {% for day in standard_closing_days %}
+                <option value="{{ day }}" {% if selected_closing_day == day %}selected{% endif %}>
+                    {% if day == 31 %}月末締め{% else %}{{ day }}日締め{% endif %}
+                </option>
+                {% endfor %}
+                {% if today_closing_day not in standard_closing_days %}
+                <option value="{{ today_closing_day }}" {% if selected_closing_day == today_closing_day %}selected{% endif %}>{{ today_closing_day }}日締め</option>
+                {% endif %}
             </select>
         </div>
         <button type="submit" class="btn btn-primary" style="padding: 8px 20px; font-weight: bold; background: #3498db;">
