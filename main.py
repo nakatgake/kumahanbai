@@ -2188,7 +2188,7 @@ async def admin_generate_monthly_invoices(
     month: int = Form(...),
     closing_day_filter: Optional[str] = Form(None),
     db: Session = Depends(get_db),
-    user: models.User = Depends(require_admin_user)
+    user: models.User = Depends(get_active_user)
 ):
     """指定した年月の受注をスキャンし、顧客ごとに1枚の合算請求書を生成・更新する"""
     target_closing_day = None
@@ -3961,7 +3961,7 @@ async def admin_invoice_dispatch(
     month: Optional[int] = Query(None),
     closing_day_filter: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    user: models.User = Depends(require_admin_user)
+    user: models.User = Depends(get_active_user)
 ):
     today_jst = jst_today()
     selected_year = year or today_jst.year
@@ -4030,7 +4030,7 @@ async def dispatch_invoices_email(
     request: Request,
     invoice_ids: list[int] = Form([]),
     db: Session = Depends(get_db),
-    user: models.User = Depends(require_admin_user)
+    user: models.User = Depends(get_active_user)
 ):
     if not invoice_ids:
         return RedirectResponse(url="/admin/invoice-dispatch?error=1", status_code=303)
