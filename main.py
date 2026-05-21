@@ -2222,7 +2222,10 @@ async def admin_generate_monthly_invoices(
             count += 1
     
     db.commit()
-    return RedirectResponse(url=f"/admin/invoice-dispatch?success_gen={count}", status_code=303)
+    redirect_params = f"success_gen={count}&year={year}&month={month}"
+    if target_closing_day is not None:
+        redirect_params += f"&closing_day_filter={target_closing_day}"
+    return RedirectResponse(url=f"/admin/invoice-dispatch?{redirect_params}", status_code=303)
 
 
 @app.post("/orders/{order_id}/invoice")
@@ -3954,10 +3957,22 @@ async def admin_notification_count(db: Session = Depends(get_db), user: models.U
 @app.get("/admin/invoice-dispatch", response_class=HTMLResponse)
 async def admin_invoice_dispatch(
     request: Request,
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+    closing_day_filter: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: models.User = Depends(require_admin_user)
 ):
     today_jst = jst_today()
+    selected_year = year or today_jst.year
+    selected_month = month or today_jst.month
+    selected_closing_day = None
+    if closing_day_filter:
+        try:
+            selected_closing_day = int(closing_day_filter)
+        except ValueError:
+            selected_closing_day = None
+
     # 一括発行画面は、未入金かつ未送付の請求書だけを送付待ちとして表示する
     unpaid_invoices = db.query(models.Invoice).filter(
         models.Invoice.status == models.InvoiceStatus.UNPAID,
@@ -3973,6 +3988,13 @@ async def admin_invoice_dispatch(
             inv.orders[0].quotation.customer if getattr(inv, 'orders', None) and inv.orders and inv.orders[0].quotation else None
         )
         if customer:
+            customer_closing_day = customer.closing_day or 31
+            if selected_closing_day is not None:
+                if selected_closing_day >= 31:
+                    if customer_closing_day < 31:
+                        continue
+                elif customer_closing_day != selected_closing_day:
+                    continue
             # カラムが存在しない場合やデータがNULLの場合の安全策
             method = getattr(customer, 'invoice_delivery_method', 'POSTAL')
             if method == "EMAIL":
@@ -3990,9 +4012,10 @@ async def admin_invoice_dispatch(
         "postal_invoices": postal_invoices,
         "success_msg": success_msg,
         "error_msg": error_msg,
-        "current_year": today_jst.year,
-        "current_month": today_jst.month,
+        "current_year": selected_year,
+        "current_month": selected_month,
         "today_closing_day": today_jst.day,
+        "selected_closing_day": selected_closing_day,
         "user": user
     })
 

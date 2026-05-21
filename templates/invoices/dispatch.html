@@ -4,7 +4,7 @@
 <div class="header">
     <h2>請求書一括発行</h2>
     <p style="color: #666; margin-top: 0.5rem;">
-        全未入金請求書を、顧客の「請求書送付方法」に基づいてメール送付と郵送（印刷）に振り分けて表示しています。
+        締め日ごとに請求書を確認し、顧客の「請求書送付方法」に基づいてメール送付と郵送（印刷）に振り分けて表示しています。
     </p>
 </div>
 
@@ -35,7 +35,7 @@
         月次合算請求書の「今すぐ実行・統合」
     </h3>
     <p style="font-size: 0.85rem; color: #666; margin-bottom: 1.2rem;">
-        指定した年月と締め日の注文を顧客ごとに1枚にまとめます。すでに個別発行済みの請求書がある場合も、自動的に1枚に統合（上書き）し直します。
+        指定した年月と締め日の注文を顧客ごとに1枚にまとめます。実行後は同じ締め日の請求書だけを下に表示します。
     </p>
     <form action="/admin/invoice-generate-monthly" method="post" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
         <div style="display: flex; align-items: center; gap: 8px;">
@@ -49,16 +49,29 @@
                 {% endfor %}
             </select>
             <select name="closing_day_filter" class="form-control" style="width: 150px; padding: 6px;">
-                <option value="{{ today_closing_day }}" selected>本日の締め日（{{ today_closing_day }}日）</option>
                 <option value="">全締め日</option>
-                <option value="20">20日締め</option>
-                <option value="31">月末締め</option>
+                <option value="{{ today_closing_day }}" {% if selected_closing_day == today_closing_day %}selected{% endif %}>本日の締め日（{{ today_closing_day }}日）</option>
+                <option value="20" {% if selected_closing_day == 20 %}selected{% endif %}>20日締め</option>
+                <option value="31" {% if selected_closing_day == 31 %}selected{% endif %}>月末締め</option>
             </select>
         </div>
         <button type="submit" class="btn btn-primary" style="padding: 8px 20px; font-weight: bold; background: #3498db;">
             実行する（合算請求書を生成）
         </button>
     </form>
+</div>
+
+<div style="background: #eef7ff; border: 1px solid #b7dcff; color: #24415f; padding: 0.8rem 1rem; border-radius: 8px; margin-bottom: 1.2rem; font-size: 0.9rem;">
+    表示対象:
+    <strong>
+        {{ current_year }}年{{ current_month }}月
+        {% if selected_closing_day %}
+            {% if selected_closing_day >= 31 %}月末締め{% else %}{{ selected_closing_day }}日締め{% endif %}
+        {% else %}
+            全締め日
+        {% endif %}
+    </strong>
+    の未送付請求書
 </div>
 <!-- サマリーセクション -->
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
