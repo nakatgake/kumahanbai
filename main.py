@@ -3978,12 +3978,15 @@ async def admin_invoice_dispatch(
     today_jst = jst_today()
     selected_year = year or today_jst.year
     selected_month = month or today_jst.month
-    selected_closing_day = None
+    standard_closing_days = [5, 10, 15, 20, 25, 31]
+    selected_closing_day = max([day for day in standard_closing_days if day <= today_jst.day], default=standard_closing_days[0])
     if closing_day_filter:
         try:
-            selected_closing_day = int(closing_day_filter)
+            requested_closing_day = int(closing_day_filter)
+            if requested_closing_day in standard_closing_days:
+                selected_closing_day = requested_closing_day
         except ValueError:
-            selected_closing_day = None
+            pass
 
     # 一括発行画面は、未入金かつ未送付の請求書だけを送付待ちとして表示する
     unpaid_invoices = db.query(models.Invoice).filter(
@@ -4028,7 +4031,7 @@ async def admin_invoice_dispatch(
         "current_month": selected_month,
         "today_closing_day": today_jst.day,
         "selected_closing_day": selected_closing_day,
-        "standard_closing_days": [5, 10, 15, 20, 25, 31],
+        "standard_closing_days": standard_closing_days,
         "user": user
     })
 
