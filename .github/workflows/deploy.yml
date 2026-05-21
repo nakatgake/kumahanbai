@@ -70,10 +70,21 @@ jobs:
             systemctl daemon-reload
             systemctl restart kumanomori
             systemctl restart nginx
+            if ! command -v certbot >/dev/null 2>&1; then
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y certbot python3-certbot-nginx
+            fi
+            certbot --nginx --non-interactive --agree-tos \
+              --email info@kumanomorikaken.co.jp \
+              -d app.kumanomorikaken.co.jp \
+              --redirect
+            nginx -t
+            systemctl reload nginx
             ok=0
             for i in $(seq 1 12); do
               if curl -fsS --max-time 5 http://127.0.0.1:8000/test-ping \
-                 && curl -fsS --max-time 5 http://127.0.0.1/test-ping; then
+                 && curl -fsS --max-time 5 http://127.0.0.1/test-ping \
+                 && curl -fsS --max-time 5 https://app.kumanomorikaken.co.jp/test-ping; then
                 ok=1
                 break
               fi
