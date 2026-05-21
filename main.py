@@ -2900,6 +2900,18 @@ async def delete_user(
         db.commit()
     return RedirectResponse(url="/users", status_code=303)
 
+@app.post("/users/toggle-admin/{user_id}")
+async def toggle_admin(
+    user_id: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(require_admin_user)
+):
+    target = db.query(models.User).get(user_id)
+    if target and target.id != user.id:
+        target.is_admin = not target.is_admin
+        db.commit()
+    return RedirectResponse(url="/users", status_code=303)
+
 # --- Password Change (パスワード変更) ---
 @app.get("/change-password", response_class=HTMLResponse)
 async def change_password_page(

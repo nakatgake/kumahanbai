@@ -61,11 +61,22 @@
                         <span style="background: #f7fafc; color: #718096; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.85rem;">一般</span>
                         {% endif %}
                     </td>
-                    <td>
+                    <td style="display: flex; gap: 0.5rem; align-items: center;">
+                        {% if u.id != user.id %}
+                        <form hx-post="/users/toggle-admin/{{ u.id }}" style="display: inline;"
+                              hx-confirm="{% if u.is_admin %}{{ u.full_name }}の権限を「一般」に変更しますか？{% else %}{{ u.full_name }}を「管理者」に変更しますか？{% endif %}">
+                            {% if u.is_admin %}
+                            <button type="submit" class="btn btn-sm" style="background: #718096; color: white; border: none; padding: 0.25rem 0.7rem; border-radius: 4px; cursor: pointer; font-size: 0.82rem;">一般に変更</button>
+                            {% else %}
+                            <button type="submit" class="btn btn-sm" style="background: #2b6cb0; color: white; border: none; padding: 0.25rem 0.7rem; border-radius: 4px; cursor: pointer; font-size: 0.82rem;">管理者にする</button>
+                            {% endif %}
+                        </form>
                         {% if not u.is_admin %}
-                        <form hx-post="/users/delete/{{ u.id }}" style="display: inline;">
+                        <form hx-post="/users/delete/{{ u.id }}" style="display: inline;"
+                              hx-confirm="{{ u.full_name }}を削除しますか？">
                             <button type="submit" class="btn btn-danger btn-sm">削除</button>
                         </form>
+                        {% endif %}
                         {% else %}
                         <span style="color: #a0aec0; font-size: 0.85rem;">—</span>
                         {% endif %}
