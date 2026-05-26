@@ -2723,6 +2723,7 @@ async def send_invoice_email(id: int, db: Session = Depends(get_db), user: model
 ■ お支払期限：{invoice.due_date.strftime('%Y/%m/%d') if invoice.due_date else ''}
 
 お振込先情報は添付の請求書PDF内に記載しております。
+万が一、メール本文や添付PDFが正しく表示されない場合は、お手数ですが本メールにご返信ください。
 ご確認のほど、何卒よろしくお願い申し上げます。
 
 ※ 本メールはシステムより送信されています。
@@ -4125,6 +4126,10 @@ async def dispatch_invoices_email(
                 
                 <p style="margin-top: 20px;">詳細は添付の請求書PDFをご確認ください。<br>
                 お振込先情報はPDF内に記載しております。</p>
+
+                <p style="margin-top: 16px; font-size: 0.95em; color: #555;">
+                    万が一、メール本文や添付PDFが正しく表示されない場合は、お手数ですが本メールにご返信ください。
+                </p>
                 
                 <hr style="margin-top: 40px; border: none; border-top: 1px solid #eee;">
                 <p style="font-size: 0.9em; color: #888;">
