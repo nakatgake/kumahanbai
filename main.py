@@ -30,8 +30,13 @@ except ImportError:
     print("Warning: APScheduler or date-util not found. Automated billing is disabled.")
     HAS_SCHEDULER = False
 
-from email.message import EmailMessage
-from utils.email import send_notification, send_admin_notification
+from utils.email import (
+    create_pdf_attachment,
+    create_text_part,
+    encode_mime_header,
+    send_admin_notification,
+    send_notification,
+)
 
 JST = ZoneInfo("Asia/Tokyo")
 
@@ -2698,7 +2703,7 @@ async def send_invoice_email(id: int, db: Session = Depends(get_db), user: model
     if not pdf_content:
         return RedirectResponse(url=f"/invoices/{id}?error=pdf", status_code=303)
     attachments = [{
-        "name": f"請求書_{invoice.invoice_number}.pdf",
+        "name": f"invoice_{invoice.invoice_number}.pdf",
         "content": pdf_content
     }]
     
@@ -3898,12 +3903,11 @@ async def send_customer_account_info(
         all_keys = [s.key for s in settings_records if s.key]
         return RedirectResponse(url=f"/customers?error=smtp_config&msg={missing_str} (全設定数: {len(all_keys)}, キー: {','.join(all_keys)})", status_code=303)
 
-    from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
     
     try:
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = "【株式会社熊ノ護化研】代理店システム アカウント情報のご案内"
+        msg["Subject"] = encode_mime_header("【株式会社熊ノ護化研】代理店システム アカウント情報のご案内")
         msg["From"] = smtp_from if smtp_from else "no-reply@kumanomori.jp"
         msg["To"] = customer.email
         
@@ -3936,7 +3940,7 @@ async def send_customer_account_info(
         </body>
         </html>
         """
-        msg.attach(MIMEText(html, "html"))
+        msg.attach(create_text_part(html, "html"))
         
         import smtplib
         import ssl
@@ -4036,9 +4040,7 @@ async def admin_invoice_dispatch(
     })
 
 import smtplib
-from email.message import EmailMessage
 from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 
 @app.post("/admin/invoice-dispatch/email")
 async def dispatch_invoices_email(
@@ -4089,7 +4091,7 @@ async def dispatch_invoices_email(
                 continue
                 
             msg = MIMEMultipart()
-            msg["Subject"] = f"【ご請求書】株式会社熊ノ護化研より（{inv.invoice_number}）"
+            msg["Subject"] = encode_mime_header(f"【ご請求書】株式会社熊ノ護化研より（{inv.invoice_number}）")
             msg["From"] = smtp_from if smtp_from else "no-reply@kumanomori.jp"
             msg["To"] = customer.email
             
@@ -4134,18 +4136,15 @@ async def dispatch_invoices_email(
             </html>
             """
             
-            msg.attach(MIMEText(html, "html"))
+            msg.attach(create_text_part(html, "html"))
             
             # PDF生成と添付
             try:
-                from email.mime.application import MIMEApplication
                 pdf_content = generate_invoice_pdf_content(inv)
                 if not pdf_content:
                     print(f"PDF Attachment Error: invoice {inv.invoice_number} generated no content")
                     continue
-                part = MIMEApplication(pdf_content, Name=f"請求書_{inv.invoice_number}.pdf")
-                part['Content-Disposition'] = f'attachment; filename="請求書_{inv.invoice_number}.pdf"'
-                msg.attach(part)
+                msg.attach(create_pdf_attachment(pdf_content, f"invoice_{inv.invoice_number}.pdf"))
             except Exception as e:
                 print(f"PDF Attachment Error: {e}")
                 continue

@@ -1,5 +1,6 @@
 import smtplib
 import ssl
+from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
@@ -8,6 +9,21 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import SystemSetting
+
+
+def encode_mime_header(value: str) -> str:
+    return str(Header(value or "", "utf-8"))
+
+
+def create_text_part(body: str, subtype: str = "plain") -> MIMEText:
+    return MIMEText(body or "", subtype, "utf-8")
+
+
+def create_pdf_attachment(content: bytes, filename: str) -> MIMEApplication:
+    part = MIMEApplication(content, _subtype="pdf")
+    part.set_param("name", filename, header="Content-Type")
+    part.add_header("Content-Disposition", "attachment", filename=filename)
+    return part
 
 
 def _load_smtp_settings(db: Session) -> dict:
@@ -47,19 +63,17 @@ def send_notification(
 
         # Create message
         msg = MIMEMultipart()
-        msg["Subject"] = subject
+        msg["Subject"] = encode_mime_header(subject)
         msg["From"] = sender
         msg["To"] = ", ".join(to or ["info@kumanomorikaken.co.jp"])
         
         # Body
-        msg.attach(MIMEText(body, 'plain'))
+        msg.attach(create_text_part(body, "plain"))
 
         # Attachments
         if attachments:
             for att in attachments:
-                part = MIMEApplication(att['content'], Name=att['name'])
-                part['Content-Disposition'] = f'attachment; filename="{att["name"]}"'
-                msg.attach(part)
+                msg.attach(create_pdf_attachment(att["content"], att["name"]))
 
         context = ssl.create_default_context()
         if port == 465:
