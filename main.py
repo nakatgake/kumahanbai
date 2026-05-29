@@ -46,6 +46,29 @@ def jst_now() -> datetime.datetime:
 def jst_today() -> datetime.date:
     return jst_now().date()
 
+def resolve_customer_id(db: Session, customer_id: str, customer_query: str = "") -> Optional[int]:
+    if customer_id:
+        return int(customer_id)
+
+    query = (customer_query or "").strip()
+    if not query:
+        return None
+
+    customers = db.query(models.Customer).filter(
+        (models.Customer.name == query) | (models.Customer.company == query)
+    ).all()
+
+    if not customers:
+        all_customers = db.query(models.Customer).all()
+        customers = [
+            c for c in all_customers
+            if query == (f"{c.company} ({c.name})" if c.company and c.name else (c.company or c.name or "")).strip()
+        ]
+
+    if len(customers) == 1:
+        return customers[0].id
+    return None
+
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
 
@@ -1286,11 +1309,12 @@ async def create_quotation(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
-    if not customer_id or customer_id == "":
+    form_data = await request.form()
+    resolved_customer_id = resolve_customer_id(db, customer_id, form_data.get("q", ""))
+    if resolved_customer_id is None:
         # もしフロントを抜けてきた場合
         return HTMLResponse(content="<script>alert('顧客を選択してください'); history.back();</script>", status_code=400)
-    customer_id = int(customer_id)
-    form_data = await request.form()
+    customer_id = resolved_customer_id
     product_ids = form_data.getlist("product_id[]")
     product_names = form_data.getlist("product_name[]")
     quantities = form_data.getlist("quantity[]")
@@ -1378,10 +1402,12 @@ async def update_quotation(
     user: models.User = Depends(get_active_user)
 ):
     quotation = db.query(models.Quotation).get(quote_id)
-    if not customer_id or customer_id == "":
+    form_data = await request.form()
+    resolved_customer_id = resolve_customer_id(db, customer_id, form_data.get("q", ""))
+    if resolved_customer_id is None:
         return HTMLResponse(content="<script>alert('顧客を選択してください'); history.back();</script>", status_code=400)
     
-    customer_id = int(customer_id)
+    customer_id = resolved_customer_id
     quotation.customer_id = customer_id
     quotation.quote_number = quote_number
     try:
@@ -1409,7 +1435,6 @@ async def update_quotation(
     # 洗替方式で明細を更新
     db.query(models.QuotationItem).filter(models.QuotationItem.quotation_id == quote_id).delete()
     
-    form_data = await request.form()
     product_ids = form_data.getlist("product_id[]")
     product_names = form_data.getlist("product_name[]")
     quantities = form_data.getlist("quantity[]")
@@ -1758,10 +1783,11 @@ async def create_direct_order(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_active_user)
 ):
-    if not customer_id or customer_id == "":
-        return HTMLResponse(content="<script>alert('顧客を選択してください'); history.back();</script>", status_code=400)
-    customer_id_int = int(customer_id)
     form_data = await request.form()
+    resolved_customer_id = resolve_customer_id(db, customer_id, form_data.get("q", ""))
+    if resolved_customer_id is None:
+        return HTMLResponse(content="<script>alert('顧客を選択してください'); history.back();</script>", status_code=400)
+    customer_id_int = resolved_customer_id
     product_ids = form_data.getlist("product_id[]")
     product_names = form_data.getlist("product_name[]")
     quantities = form_data.getlist("quantity[]")
@@ -1860,9 +1886,11 @@ async def update_order(
     if not order:
         return RedirectResponse(url="/orders", status_code=303)
     
-    if not customer_id or customer_id == "":
+    form_data = await request.form()
+    resolved_customer_id = resolve_customer_id(db, customer_id, form_data.get("q", ""))
+    if resolved_customer_id is None:
         return HTMLResponse(content="<script>alert('顧客を選択してください'); history.back();</script>", status_code=400)
-    customer_id_int = int(customer_id)
+    customer_id_int = resolved_customer_id
 
     order.order_number = order_number
     order.order_date = datetime.datetime.strptime(order_date, '%Y-%m-%d')
@@ -1880,7 +1908,6 @@ async def update_order(
     # 洗替方式で明細を更新
     db.query(models.QuotationItem).filter(models.QuotationItem.quotation_id == quotation.id).delete()
     
-    form_data = await request.form()
     product_ids = form_data.getlist("product_id[]")
     product_names = form_data.getlist("product_name[]")
     quantities = form_data.getlist("quantity[]")
