@@ -11,7 +11,7 @@
         <div class="form-group">
             <label>顧客選択</label>
             <div style="position: relative;">
-                    <input type="text" id="customer-search" name="q"
+                    <input type="text" id="customer-search" name="customer_query"
                            placeholder="顧客名・会社名で検索..." 
                            value="{{ (order.quotation.customer.company or '') + (' (' + order.quotation.customer.name + ')' if order.quotation.customer.name else '') if order and order.quotation.customer else '' }}"
                            hx-get="/api/customers/search" 
@@ -92,7 +92,7 @@
 
         <div style="margin-top: 1rem; display: flex; gap: 1rem;">
             <div style="position: relative; flex: 1;">
-                <input type="text" id="product-search" name="q"
+                <input type="text" id="product-search"
                        placeholder="商品台帳から検索して追加..." 
                        hx-get="/api/products/search" 
                        hx-trigger="keyup changed delay:300ms" 
@@ -142,7 +142,14 @@
     let shippingManuallyRemoved = false;
 
     function validateForm() {
-        const customerId = document.getElementById('selected-customer-id').value;
+        let customerId = document.getElementById('selected-customer-id').value;
+        if (!customerId || customerId === "") {
+            const results = document.querySelectorAll('#customer-search-results .search-result');
+            if (results.length === 1) {
+                results[0].click();
+                customerId = document.getElementById('selected-customer-id').value;
+            }
+        }
         if (!customerId || customerId === "") {
             alert("顧客を選択してください。検索窓に名前を入力した後、表示される候補をクリックして確定させる必要があります。");
             document.getElementById('customer-search').focus();
@@ -230,7 +237,7 @@
     }
 
     function validateWholesaleOrder() {
-        return true;
+        return validateForm();
     }
 
     function toggleBulkDiscount() {

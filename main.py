@@ -59,6 +59,11 @@ def resolve_customer_id(db: Session, customer_id: str, customer_query: str = "")
     ).all()
 
     if not customers:
+        customers = db.query(models.Customer).filter(
+            (models.Customer.name.contains(query)) | (models.Customer.company.contains(query))
+        ).limit(2).all()
+
+    if not customers:
         all_customers = db.query(models.Customer).all()
         customers = [
             c for c in all_customers
@@ -68,6 +73,16 @@ def resolve_customer_id(db: Session, customer_id: str, customer_query: str = "")
     if len(customers) == 1:
         return customers[0].id
     return None
+
+def get_customer_query(form_data) -> str:
+    customer_query = form_data.get("customer_query", "")
+    if customer_query:
+        return customer_query
+
+    for query in form_data.getlist("q"):
+        if query:
+            return query
+    return ""
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
@@ -1310,7 +1325,7 @@ async def create_quotation(
     user: models.User = Depends(get_active_user)
 ):
     form_data = await request.form()
-    resolved_customer_id = resolve_customer_id(db, customer_id, form_data.get("q", ""))
+    resolved_customer_id = resolve_customer_id(db, customer_id, get_customer_query(form_data))
     if resolved_customer_id is None:
         # もしフロントを抜けてきた場合
         return HTMLResponse(content="<script>alert('顧客を選択してください'); history.back();</script>", status_code=400)
@@ -1403,7 +1418,7 @@ async def update_quotation(
 ):
     quotation = db.query(models.Quotation).get(quote_id)
     form_data = await request.form()
-    resolved_customer_id = resolve_customer_id(db, customer_id, form_data.get("q", ""))
+    resolved_customer_id = resolve_customer_id(db, customer_id, get_customer_query(form_data))
     if resolved_customer_id is None:
         return HTMLResponse(content="<script>alert('顧客を選択してください'); history.back();</script>", status_code=400)
     
@@ -1784,7 +1799,7 @@ async def create_direct_order(
     user: models.User = Depends(get_active_user)
 ):
     form_data = await request.form()
-    resolved_customer_id = resolve_customer_id(db, customer_id, form_data.get("q", ""))
+    resolved_customer_id = resolve_customer_id(db, customer_id, get_customer_query(form_data))
     if resolved_customer_id is None:
         return HTMLResponse(content="<script>alert('顧客を選択してください'); history.back();</script>", status_code=400)
     customer_id_int = resolved_customer_id
@@ -1887,7 +1902,7 @@ async def update_order(
         return RedirectResponse(url="/orders", status_code=303)
     
     form_data = await request.form()
-    resolved_customer_id = resolve_customer_id(db, customer_id, form_data.get("q", ""))
+    resolved_customer_id = resolve_customer_id(db, customer_id, get_customer_query(form_data))
     if resolved_customer_id is None:
         return HTMLResponse(content="<script>alert('顧客を選択してください'); history.back();</script>", status_code=400)
     customer_id_int = resolved_customer_id
