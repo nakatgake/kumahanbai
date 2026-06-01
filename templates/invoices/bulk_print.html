@@ -280,7 +280,8 @@
                 </div>
             </div>
 
-            {% set tax = invoice_tax_summary(doc.total_amount) %}
+            {% set tax_base = invoice_display_amount(doc) %}
+            {% set tax = invoice_tax_summary(tax_base) %}
             <div class="grand-total-box">
                 <div class="total-label">御請求金額（税込）</div>
                 <div class="total-amount">{{ "¥{:,.0f}".format(tax.total) }}-</div>
@@ -335,7 +336,7 @@
 
             <div class="summary-wrapper">
                 <table class="summary-table">
-                    {% set original_subtotal = doc.total_amount %}
+                    {% set original_subtotal = tax_base %}
                     <tr>
                         <td class="summary-label">小計（税抜）</td>
                         <td class="summary-value">{{ "¥{:,.0f}".format(original_subtotal|int) }}</td>
@@ -343,7 +344,7 @@
                     {% if doc.discount_rate|default(0) > 0 %}
                     <tr>
                         <td class="summary-label">値引き ({{ doc.discount_rate|default(0) }}%)</td>
-                        <td class="summary-value" style="color: #e74c3c;">-{{ "¥{:,.0f}".format((original_subtotal - doc.total_amount)|int) }}</td>
+                        <td class="summary-value" style="color: #e74c3c;">-{{ "¥{:,.0f}".format((original_subtotal - tax_base)|int) }}</td>
                     </tr>
                     {% endif %}
                     <tr>

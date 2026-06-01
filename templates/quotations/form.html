@@ -160,6 +160,14 @@
 <script>
     let shippingManuallyRemoved = false;
 
+    function yenAmount(value) {
+        return Math.round((Number(value) || 0) + Number.EPSILON);
+    }
+
+    function taxIncludedTotal(taxExclAmount) {
+        return Math.floor((Number(taxExclAmount) || 0) * 1.1 + Number.EPSILON);
+    }
+
     function validateForm() {
         let customerId = document.getElementById('selected-customer-id').value;
         if (!customerId || customerId === "") {
@@ -181,7 +189,7 @@
         const row = document.getElementById(rowId);
         const price = parseFloat(row.querySelector('input[name="price[]"]').value) || 0;
         const qty = parseInt(row.querySelector('input[name="quantity[]"]').value) || 0;
-        const subtotal = price * qty;
+        const subtotal = yenAmount(price * qty);
         row.querySelector('.subtotal').innerText = `¥${new Intl.NumberFormat().format(subtotal)}`;
         updateGrandTotal();
     }
@@ -209,7 +217,7 @@
         const discountAmount = Math.floor(subtotalSum * (discountRate / 100));
         
         let finalSubtotal = subtotalSum - discountAmount;
-        const taxInclTotal = Math.floor(finalSubtotal * 1.1);
+        const taxInclTotal = taxIncludedTotal(finalSubtotal);
 
         // Wholesale Rules (Non-Retail)
         if (rank !== 'RETAIL') {
@@ -217,7 +225,7 @@
             const existingShippingRow = document.getElementById(shippingRowId);
             
             // Rule: Product Total (tax-incl) <= 30k -> Add 1200 shipping (unless manually removed)
-            const discountedProductTotalInclTax = Math.floor((productTotal * (1 - discountRate/100)) * 1.1);
+            const discountedProductTotalInclTax = taxIncludedTotal(productTotal - Math.floor(productTotal * (discountRate / 100)));
             
             if (discountedProductTotalInclTax <= 30000 && !shippingManuallyRemoved) {
                 if (!existingShippingRow) {

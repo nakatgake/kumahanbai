@@ -42,7 +42,7 @@
 
             <div style="background: #f8f9fa; border: 2px solid #1a2a6c; padding: 1.5rem; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
                 <span style="font-size: 1.1rem; font-weight: bold;">御請求金額（税込）</span>
-                {% set tax = invoice_tax_summary(invoice.total_amount) %}
+                {% set tax = invoice_tax_summary(invoice_display_amount(invoice)) %}
                 <span style="font-size: 2rem; font-weight: bold; color: #1a2a6c;">¥{{ "{:,.0f}".format(tax.total) }}-</span>
             </div>
 

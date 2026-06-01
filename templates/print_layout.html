@@ -317,11 +317,13 @@
             </div>
         </div>
 
+        {% set tax_base = invoice_display_amount(doc) if doc_type == 'invoice' else doc.total_amount %}
+        {% set tax = invoice_tax_summary(tax_base) %}
         <div class="grand-total-box">
             <div class="total-label">
                 {% if doc_type == 'quotation' %}御見積金額（税込）{% elif doc_type == 'delivery_note' %}納品金額（税込）{% else %}御請求金額（税込）{% endif %}
             </div>
-            <div class="total-amount">{{ "¥{:,.0f}".format((doc.total_amount * 1.1)|int) }}-</div>
+            <div class="total-amount">{{ "¥{:,.0f}".format(tax.total) }}-</div>
         </div>
 
         <table class="items-table">
@@ -394,7 +396,7 @@
         <div class="summary-wrapper">
             <table class="summary-table">
                 {% if doc_type == 'invoice' %}
-                    {% set original_subtotal = doc.total_amount %}
+                    {% set original_subtotal = tax_base %}
                 {% else %}
                     {% set items = doc.items if doc_type == 'quotation' else doc.quotation.items %}
                     {% set original_subtotal = items|sum(attribute='subtotal') %}
@@ -406,16 +408,16 @@
                 {% if doc.discount_rate|default(0) > 0 %}
                 <tr>
                     <td class="summary-label">値引き ({{ doc.discount_rate|default(0) }}%)</td>
-                    <td class="summary-value" style="color: #e74c3c;">-{{ "¥{:,.0f}".format((original_subtotal - doc.total_amount)|int) }}</td>
+                    <td class="summary-value" style="color: #e74c3c;">-{{ "¥{:,.0f}".format((original_subtotal - tax_base)|int) }}</td>
                 </tr>
                 {% endif %}
                 <tr>
                     <td class="summary-label">消費税（10%）</td>
-                    <td class="summary-value">{{ "¥{:,.0f}".format((doc.total_amount * 0.1)|int) }}</td>
+                    <td class="summary-value">{{ "¥{:,.0f}".format(tax.tax) }}</td>
                 </tr>
                 <tr>
                     <td class="summary-grand-label">合計（税込）</td>
-                    <td class="summary-grand-value">{{ "¥{:,.0f}".format((doc.total_amount * 1.1)|int) }}</td>
+                    <td class="summary-grand-value">{{ "¥{:,.0f}".format(tax.total) }}</td>
                 </tr>
             </table>
         </div>

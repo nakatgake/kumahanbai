@@ -13,6 +13,7 @@ import models
 from database import SessionLocal, engine, get_db
 import datetime
 import io
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from fpdf import FPDF
 import xlsxwriter
 from fastapi.responses import StreamingResponse
@@ -345,14 +346,98 @@ def is_invoice_locked(invoice: models.Invoice) -> bool:
     )
 
 def invoice_tax_summary(amount_excl_tax: float, tax_rate: float = 0.1) -> dict:
-    subtotal = int(amount_excl_tax or 0)
-    tax = int(subtotal * tax_rate)
+    amount = Decimal(str(amount_excl_tax or 0))
+    subtotal = int(amount.to_integral_value(rounding=ROUND_HALF_UP))
+    rate = Decimal(str(tax_rate))
+    tax = int((Decimal(subtotal) * rate).to_integral_value(rounding=ROUND_DOWN))
     return {
         "subtotal": subtotal,
         "tax_rate": tax_rate,
         "tax": tax,
         "total": subtotal + tax,
     }
+
+def yen_amount(value) -> int:
+    return int(Decimal(str(value or 0)).to_integral_value(rounding=ROUND_HALF_UP))
+
+def yen_subtotal(quantity, unit_price) -> int:
+    return yen_amount(Decimal(str(quantity or 0)) * Decimal(str(unit_price or 0)))
+
+def yen_discount(amount, discount_rate) -> int:
+    return int(
+        (Decimal(str(amount or 0)) * Decimal(str(discount_rate or 0)) / Decimal("100"))
+        .to_integral_value(rounding=ROUND_DOWN)
+    )
+
+def order_line_items_total(order: models.Order) -> Optional[int]:
+    if not order or not order.quotation:
+        return None
+
+    total = 0
+    found_items = False
+    for item in order.quotation.items:
+        total += yen_amount(item.subtotal)
+        found_items = True
+
+    return total if found_items else None
+
+def order_billable_total(order: models.Order) -> int:
+    saved_total = yen_amount(order.total_amount if order else 0)
+    line_total = order_line_items_total(order)
+    if line_total is None:
+        return saved_total
+
+    discount_rate = getattr(order, "discount_rate", None)
+    if discount_rate is None and getattr(order, "quotation", None):
+        discount_rate = order.quotation.discount_rate
+
+    return line_total - yen_discount(line_total, discount_rate or 0)
+
+def sync_order_total_from_lines(order: models.Order) -> bool:
+    if not order:
+        return False
+
+    billable_total = order_billable_total(order)
+    saved_total = yen_amount(order.total_amount)
+    if abs(billable_total - saved_total) <= 1 and billable_total != saved_total:
+        order.total_amount = billable_total
+        return True
+    return False
+
+def invoice_line_items_total(invoice: models.Invoice) -> Optional[int]:
+    if not invoice:
+        return None
+
+    total = 0
+    for order in invoice.orders:
+        if order_line_items_total(order) is None:
+            continue
+        total += order_billable_total(order)
+
+    return total if invoice.orders else None
+
+def invoice_display_amount(invoice: models.Invoice) -> int:
+    saved_total = yen_amount(invoice.total_amount if invoice else 0)
+    line_total = invoice_line_items_total(invoice)
+    if line_total is not None and abs(line_total - saved_total) <= 1:
+        return line_total
+    return saved_total
+
+def sync_invoice_total_from_lines(invoice: models.Invoice) -> bool:
+    line_total = invoice_line_items_total(invoice)
+    if line_total is None:
+        return False
+
+    changed = False
+    for order in invoice.orders:
+        if sync_order_total_from_lines(order):
+            changed = True
+
+    if abs(line_total - yen_amount(invoice.total_amount)) <= 1 and line_total != yen_amount(invoice.total_amount):
+        invoice.total_amount = line_total
+        changed = True
+
+    return changed
 
 def billable_standard_orders_query(db: Session):
     return db.query(models.Order).filter(
@@ -447,7 +532,7 @@ def consolidate_monthly_invoice_for_customer(
         db.flush()
         remaining_standard_orders = db.query(models.Order).filter_by(invoice_id=old_inv.id).all()
         remaining_agency_orders = db.query(models.AgencyOrder).filter_by(invoice_id=old_inv.id).all()
-        remaining_standard_total = sum(int(o.total_amount or 0) for o in remaining_standard_orders)
+        remaining_standard_total = sum(order_billable_total(o) for o in remaining_standard_orders)
         remaining_agency_total = sum(int(ao.total_amount or 0) for ao in remaining_agency_orders)
         if remaining_standard_orders or remaining_agency_orders:
             old_inv.total_amount = float(remaining_standard_total + remaining_agency_total)
@@ -458,7 +543,9 @@ def consolidate_monthly_invoice_for_customer(
 
     due_date_raw = calculate_payment_date(end_date, cust.payment_term_months or 1, cust.payment_day or 31)
     due_date = next_business_day(due_date_raw)
-    total_standard = sum(int(o.total_amount or 0) for o in standard_orders)
+    for order in standard_orders:
+        sync_order_total_from_lines(order)
+    total_standard = sum(order_billable_total(o) for o in standard_orders)
     total_agency = sum(int(ao.total_amount or 0) for ao in agency_orders)
     grand_total_excl_tax = total_standard + total_agency
 
@@ -644,6 +731,7 @@ async def auth_exception_handler(request: Request, exc: NotAuthenticatedExceptio
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 templates.env.globals["invoice_tax_summary"] = invoice_tax_summary
+templates.env.globals["invoice_display_amount"] = invoice_display_amount
 
 @app.get("/test-ping")
 async def test_ping():
@@ -1358,7 +1446,7 @@ async def create_quotation(
     for p_id, p_name, qty, price in zip(product_ids, product_names, quantities, prices):
         qty = int(qty)
         price = float(price)
-        subtotal = qty * price
+        subtotal = yen_subtotal(qty, price)
         
         # product_id can be empty for manual entry
         pid = int(p_id) if p_id and p_id != "" else None
@@ -1374,7 +1462,7 @@ async def create_quotation(
         db.add(item)
         total += subtotal
     
-    discount_amount = int(total * (discount_rate / 100))
+    discount_amount = yen_discount(total, discount_rate)
     final_total_tax_excl = total - discount_amount
     # 10k JPY limit check removed for Admin system per request
 
@@ -1459,7 +1547,7 @@ async def update_quotation(
     for p_id, p_name, qty, price in zip(product_ids, product_names, quantities, prices):
         qty = int(qty)
         price = float(price)
-        subtotal = qty * price
+        subtotal = yen_subtotal(qty, price)
         pid = int(p_id) if p_id and p_id != "" else None
         
         item = models.QuotationItem(
@@ -1478,7 +1566,7 @@ async def update_quotation(
             if main_loc:
                 update_product_stock(db, pid, main_loc.id, qty, "OUTBOUND", "注文更新による自動出庫")
     
-    discount_amount = int(total * (discount_rate / 100))
+    discount_amount = yen_discount(total, discount_rate)
     final_total_tax_excl = total - discount_amount
     # 10k JPY limit check removed for Admin system per request
 
@@ -1826,7 +1914,7 @@ async def create_direct_order(
     for p_id, p_name, qty, price in zip(product_ids, product_names, quantities, prices):
         qty = int(qty)
         price = float(price)
-        subtotal = qty * price
+        subtotal = yen_subtotal(qty, price)
         pid = int(p_id) if p_id and p_id != "" else None
         
         item = models.QuotationItem(
@@ -1846,7 +1934,7 @@ async def create_direct_order(
             if main_loc:
                 update_product_stock(db, pid, main_loc.id, qty, "OUTBOUND", "直接受注による自動出庫")
     
-    discount_amount = int(total * (discount_rate / 100))
+    discount_amount = yen_discount(total, discount_rate)
     final_total_tax_excl = total - discount_amount
     # 10k JPY limit check removed for Admin system per request
 
@@ -1932,7 +2020,7 @@ async def update_order(
     for p_id, p_name, qty, price in zip(product_ids, product_names, quantities, prices):
         qty = int(qty)
         price = float(price)
-        subtotal = qty * price
+        subtotal = yen_subtotal(qty, price)
         pid = int(p_id) if p_id and p_id != "" else None
         
         item = models.QuotationItem(
@@ -1951,7 +2039,7 @@ async def update_order(
             if main_loc:
                 update_product_stock(db, pid, main_loc.id, qty, "OUTBOUND", "注文編集による自動出庫")
     
-    discount_amount = int(total * (discount_rate / 100))
+    discount_amount = yen_discount(total, discount_rate)
     final_total_tax_excl = total - discount_amount
     # 10k JPY limit check removed for Admin system per request
 
@@ -2281,6 +2369,8 @@ async def create_invoice(order_id: int, db: Session = Depends(get_db), user: mod
     if not order or order.invoice:
         return RedirectResponse(url="/orders", status_code=303)
 
+    sync_order_total_from_lines(order)
+
     # Create Invoice
     invoice = models.Invoice(
         customer_id=order.quotation.customer_id,
@@ -2294,7 +2384,7 @@ async def create_invoice(order_id: int, db: Session = Depends(get_db), user: mod
             ),
             datetime.time.min
         ),
-        total_amount=order.total_amount,
+        total_amount=order_billable_total(order),
         status=models.InvoiceStatus.UNPAID,
         delivery_status="UNSENT",
         memo=order.memo
@@ -2407,7 +2497,7 @@ async def update_invoice(
         invoice.issue_date = datetime.datetime.strptime(issue_date, '%Y-%m-%d')
     except ValueError:
         pass
-    invoice.total_amount = total_amount
+    invoice.total_amount = yen_amount(total_amount)
     try:
         invoice.due_date = datetime.datetime.strptime(due_date, '%Y-%m-%d')
     except ValueError:
@@ -2426,6 +2516,10 @@ async def view_invoice(request: Request, id: int, db: Session = Depends(get_db),
     invoice = db.query(models.Invoice).get(id)
     if not invoice:
         return RedirectResponse(url="/invoices", status_code=303)
+
+    if sync_invoice_total_from_lines(invoice):
+        db.commit()
+        db.refresh(invoice)
     
     return templates.TemplateResponse(request=request, name="invoices/detail.html", context={
         "request": request,
@@ -2586,7 +2680,8 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
         
         pdf.set_font("Japanese" if font_found else "helvetica", "", 20)
         pdf.set_text_color(*primary_color)
-        totals = invoice_tax_summary(invoice.total_amount)
+        display_amount = invoice_display_amount(invoice)
+        totals = invoice_tax_summary(display_amount)
         grand_total = totals["total"]
         pdf.cell(125, 7, f"¥{grand_total:,.0f} -", ln=True, align="R")
         
@@ -2677,7 +2772,7 @@ def generate_invoice_pdf_content(invoice: models.Invoice):
         pdf.set_font("Japanese" if font_found else "helvetica", "", 9)
         pdf.set_x(summary_x)
         pdf.cell(35, 6, "小計（税抜）", border=0, align="R")
-        pdf.cell(35, 6, f"¥{int(invoice.total_amount):,.0f}", border=0, align="R", ln=True)
+        pdf.cell(35, 6, f"¥{display_amount:,.0f}", border=0, align="R", ln=True)
         
         pdf.set_x(summary_x)
         pdf.cell(35, 6, "消費税（10%）", border=0, align="R")
@@ -2749,7 +2844,7 @@ async def send_invoice_email(id: int, db: Session = Depends(get_db), user: model
         "content": pdf_content
     }]
     
-    totals = invoice_tax_summary(invoice.total_amount)
+    totals = invoice_tax_summary(invoice_display_amount(invoice))
     subject = f"【ご請求書】株式会社熊ノ護化研より（請求番号：{invoice.invoice_number}）"
     body = f"""{customer.company or customer.name}
 {customer.honorific or '御中'}
@@ -3305,7 +3400,7 @@ async def agency_create_order(
                 actual_qty = qty
                 price = get_price_for_rank(product, agency.rank)
             
-            subtotal = actual_qty * price
+            subtotal = yen_subtotal(actual_qty, price)
             
             item = models.AgencyOrderItem(
                 agency_order_id=agency_order.id,
@@ -3326,7 +3421,7 @@ async def agency_create_order(
         SHIPPING_THRESHOLD = int(get_system_setting(db, "shipping_fee_free_threshold", "30000"))
         SHIPPING_FEE = int(get_system_setting(db, "shipping_fee", "1200"))
 
-        product_total_tax_incl = int(product_total_tax_excl * (1 + TAX_RATE))
+        product_total_tax_incl = invoice_tax_summary(product_total_tax_excl, TAX_RATE)["total"]
         
         if product_total_tax_incl <= MIN_ORDER:
             return HTMLResponse(content=f"<script>alert('ご注文合計（税込）が{MIN_ORDER:,.0f}円以下のため、発注を承ることができません。商品を追加してください。'); history.back();</script>", status_code=400)
@@ -4139,7 +4234,7 @@ async def dispatch_invoices_email(
             msg["To"] = customer.email
             
             due_date_str = inv.due_date.strftime('%Y年%m月%d日') if inv.due_date else '末日'
-            grand_total = invoice_tax_summary(inv.total_amount)["total"]
+            grand_total = invoice_tax_summary(invoice_display_amount(inv))["total"]
             
             html = f"""
             <html>

@@ -189,7 +189,7 @@
                         {% endif %}
                     </td>
                     <td>{% if customer %}{{ customer.email or '' }}{% endif %}</td>
-                    {% set tax = invoice_tax_summary(inv.total_amount) %}
+                    {% set tax = invoice_tax_summary(invoice_display_amount(inv)) %}
                     <td style="font-weight: bold; color: #2c3e50;">
                         ¥{{ "{:,.0f}".format(tax.total) }}
                     </td>
@@ -269,7 +269,7 @@
                         {% endif %}
                     </td>
                     <td>{% if customer %}{{ customer.address or '' }}{% endif %}</td>
-                    {% set tax = invoice_tax_summary(inv.total_amount) %}
+                    {% set tax = invoice_tax_summary(invoice_display_amount(inv)) %}
                     <td style="font-weight: bold; color: #2c3e50;">
                         ¥{{ "{:,.0f}".format(tax.total) }}
                     </td>
