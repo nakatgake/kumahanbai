@@ -45,7 +45,6 @@ jobs:
           host: 220.158.27.121
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # 大切なファイルを上書きしないように設定します
           source: "main.py,models.py,database.py,requirements.txt,billing_integrity_check.py,templates,static,utils,deploy"
           target: "/var/www/kumanomori/"
           rm: false
@@ -59,9 +58,13 @@ jobs:
           script: |
             set -e
             cd /var/www/kumanomori
-            if [ -x venv/bin/python ]; then
-              venv/bin/python -m py_compile main.py models.py database.py billing_integrity_check.py
+            if [ ! -x venv/bin/python ]; then
+              python3 -m venv venv
             fi
+            venv/bin/python -m pip install --upgrade pip
+            venv/bin/python -m pip install -r requirements.txt
+            venv/bin/python -m pip check
+            venv/bin/python -m py_compile main.py models.py database.py billing_integrity_check.py
             cp deploy/kumanomori.service /etc/systemd/system/kumanomori.service
             mkdir -p /var/www/letsencrypt
             cp deploy/nginx.conf /etc/nginx/sites-available/kumanomori
