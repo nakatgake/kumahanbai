@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, Request, Form, File, UploadFile, Query
 from typing import Optional
+from contextlib import asynccontextmanager
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 import shutil
 import os
@@ -709,7 +710,22 @@ import traceback
 # 1. エラーを記録するためのグローバル変数
 LAST_ERROR = "No errors logged yet."
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if HAS_SCHEDULER:
+        if not scheduler.running:
+            scheduler.start()
+            print("APScheduler started on startup (Closing Notification Job: 08:00 JST)")
+    else:
+        print("APScheduler skipped (missing libraries)")
+    try:
+        yield
+    finally:
+        if HAS_SCHEDULER and scheduler.running:
+            scheduler.shutdown()
+            print("APScheduler shutdown")
+
+app = FastAPI(lifespan=lifespan)
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -806,19 +822,6 @@ if HAS_SCHEDULER:
     scheduler = BackgroundScheduler(timezone="Asia/Tokyo")
     scheduler.add_job(closing_notification_job, 'cron', hour=8, minute=0)
 
-@app.on_event("startup")
-async def startup_event():
-    if HAS_SCHEDULER:
-        scheduler.start()
-        print("APScheduler started on startup (Closing Notification Job: 08:00 JST)")
-    else:
-        print("APScheduler skipped (missing libraries)")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    if HAS_SCHEDULER:
-        scheduler.shutdown()
-        print("APScheduler shutdown")
 # --- Dashboard ---
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(
@@ -2914,9 +2917,15 @@ async def search_products(q: str = "", db: Session = Depends(get_db), user: mode
 
 # API for HTMX Customer Search
 @app.get("/api/customers/search")
-async def search_customers(q: str = "", db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
+async def search_customers(
+    q: str = "",
+    customer_query: str = "",
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_active_user),
+):
+    query = (q or customer_query or "").strip()
     customers = db.query(models.Customer).filter(
-        (models.Customer.name.contains(q)) | (models.Customer.company.contains(q))
+        (models.Customer.name.contains(query)) | (models.Customer.company.contains(query))
     ).order_by(models.Customer.id.desc()).limit(10).all()
     html = ""
     for c in customers:

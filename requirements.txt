@@ -3,10 +3,11 @@ uvicorn[standard]
 sqlalchemy
 jinja2
 python-multipart
+httpx2
 fpdf2
 xlsxwriter
 itsdangerous
-passlib[pbkdf2-sha256]
+passlib
 gunicorn
 a2wsgi
 apscheduler

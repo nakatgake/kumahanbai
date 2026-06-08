@@ -15,7 +15,7 @@
                            placeholder="顧客名・会社名で検索..." 
                            value="{{ (order.quotation.customer.company or '') + (' (' + order.quotation.customer.name + ')' if order.quotation.customer.name else '') if order and order.quotation.customer else '' }}"
                            hx-get="/api/customers/search" 
-                           hx-trigger="keyup changed delay:300ms" 
+                           hx-trigger="input changed delay:300ms" 
                            hx-target="#customer-search-results"
                            style="width: 100%;">
                 <input type="hidden" name="customer_id" id="selected-customer-id" value="{{ order.quotation.customer_id if order and order.quotation else '' }}" required>
@@ -294,6 +294,10 @@
         rankSelect.value = rank;
         changeRank();
     }
+
+    document.getElementById('customer-search').addEventListener('input', function() {
+        document.getElementById('selected-customer-id').value = '';
+    });
 
     function selectProduct(id, name, prices) {
         const rank = document.getElementById('selected-customer-rank').value || 'RETAIL';

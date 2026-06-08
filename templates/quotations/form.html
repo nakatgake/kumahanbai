@@ -16,7 +16,7 @@
                            placeholder="顧客名・会社名で検索..." 
                            value="{{ (quotation.customer.company or '') + (' (' + quotation.customer.name + ')' if quotation.customer.name else '') if quotation and quotation.customer else '' }}"
                            hx-get="/api/customers/search" 
-                           hx-trigger="keyup changed delay:300ms" 
+                           hx-trigger="input changed delay:300ms" 
                            hx-target="#customer-search-results"
                            style="width: 100%;">
                     <input type="hidden" name="customer_id" id="selected-customer-id" value="{{ quotation.customer_id if quotation else '' }}" required>
@@ -341,6 +341,10 @@
         // Trigger rank change logic to update prices of existing items
         changeRank();
     }
+
+    document.getElementById('customer-search').addEventListener('input', function() {
+        document.getElementById('selected-customer-id').value = '';
+    });
 
     function selectProduct(id, name, prices) {
         const rank = document.getElementById('selected-customer-rank').value || 'RETAIL';
