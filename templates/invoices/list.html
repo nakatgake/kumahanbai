@@ -45,7 +45,11 @@
                 <tbody>
                     {% for invoice in invoices %}
                     <tr id="row-{{ invoice.id }}">
-                        <td style="text-align: center;"><input type="checkbox" name="invoice_ids[]" value="{{ invoice.id }}" class="invoice-checkbox"></td>
+                        <td style="text-align: center;">
+                            {% if invoice.status.name != 'CONSOLIDATED' %}
+                            <input type="checkbox" name="invoice_ids[]" value="{{ invoice.id }}" class="invoice-checkbox">
+                            {% endif %}
+                        </td>
                         <td>
                             <a href="/invoices/{{ invoice.id }}" style="font-weight: bold; text-decoration: none; color: #1a2a6c;">
                                 {{ invoice.invoice_number }}
@@ -57,7 +61,9 @@
                         {% set tax = invoice_tax_summary(invoice_display_amount(invoice)) %}
                         <td>¥{{ "{:,.0f}".format(tax.total) }}</td>
                         <td>
-                            {% if invoice.delivery_status == 'SENT' %}
+                            {% if invoice.status.name == 'CONSOLIDATED' %}
+                                <span style="background: #ede7f6; color: #512da8; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem;">統合済み</span>
+                            {% elif invoice.delivery_status == 'SENT' %}
                                 <span style="background: #e8f5e9; color: #2e7d32; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem;">送信済(Mail)</span>
                             {% elif invoice.delivery_status == 'MAILED' %}
                                 <span style="background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem;">送付済(郵送)</span>
@@ -66,6 +72,9 @@
                             {% endif %}
                         </td>
                         <td>
+                            {% if invoice.status.name == 'CONSOLIDATED' %}
+                            <span style="background: #ede7f6; color: #512da8; padding: 4px 10px; border-radius: 12px; font-size: 0.85rem; font-weight: bold;">統合済み</span>
+                            {% else %}
                             <select
                                 name="status_{{ invoice.id }}"
                                 hx-post="/invoices/{{ invoice.id }}/set_status"
@@ -83,10 +92,13 @@
                                 <option value="PAID"   {% if invoice.status.name == 'PAID'   %}selected{% endif %}>入金済</option>
                             </select>
                             <span id="status-badge-{{ invoice.id }}" style="display: none;"></span>
+                            {% endif %}
                         </td>
                         <td style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                             <a href="/invoices/{{ invoice.id }}" class="btn btn-sm btn-info">詳細/送付</a>
+                            {% if invoice.status.name != 'CONSOLIDATED' %}
                             <a href="/invoices/edit/{{ invoice.id }}" class="btn btn-sm btn-warning">修正</a>
+                            {% endif %}
                         </td>
                     </tr>
                     {% else %}

@@ -12,6 +12,19 @@
     <strong>⚠️ 送信エラー：</strong>請求書PDFを生成できなかったため、メール送信を中止しました。
 </div>
 {% endif %}
+{% if request.query_params.get('error') == 'consolidated_delete' %}
+<div style="background: #fff3e0; border-left: 4px solid #fb8c00; color: #e65100; padding: 1rem 1.5rem; border-radius: 6px; margin-bottom: 1.5rem;">
+    <strong>削除できません：</strong>統合済みの個別請求書は、おまとめ請求書側で管理されています。
+</div>
+{% endif %}
+{% if invoice.status.name == 'CONSOLIDATED' %}
+<div style="background: #ede7f6; border-left: 4px solid #673ab7; color: #4527a0; padding: 1rem 1.5rem; border-radius: 6px; margin-bottom: 1.5rem;">
+    <strong>統合済み：</strong>この個別請求書はおまとめ請求書へ移管済みです。売掛の未入金対象には含めません。
+    {% if invoice.consolidated_invoice %}
+    <a href="/invoices/{{ invoice.consolidated_invoice.id }}" style="color: #4527a0; font-weight: bold;">おまとめ請求書を開く</a>
+    {% endif %}
+</div>
+{% endif %}
 <div class="header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
     <h2>請求書詳細：{{ invoice.invoice_number }}</h2>
     <div style="display: flex; gap: 1rem;">
@@ -45,6 +58,32 @@
                 {% set tax = invoice_tax_summary(invoice_display_amount(invoice)) %}
                 <span style="font-size: 2rem; font-weight: bold; color: #1a2a6c;">¥{{ "{:,.0f}".format(tax.total) }}-</span>
             </div>
+
+            {% if source_invoices %}
+            <h4>統合元の個別請求書</h4>
+            <div class="table-responsive" style="margin-bottom: 2rem;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid #ddd;">
+                            <th style="padding: 10px; text-align: left;">請求番号</th>
+                            <th style="padding: 10px; text-align: left;">請求日</th>
+                            <th style="padding: 10px; text-align: right;">金額(税抜)</th>
+                            <th style="padding: 10px; text-align: left;">状態</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for source in source_invoices %}
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 10px;"><a href="/invoices/{{ source.id }}">{{ source.invoice_number }}</a></td>
+                            <td style="padding: 10px;">{{ source.issue_date.strftime('%Y/%m/%d') }}</td>
+                            <td style="padding: 10px; text-align: right;">{{ "{:,.0f}".format(source.total_amount) }}</td>
+                            <td style="padding: 10px;">{{ source.status.value }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
 
             <h4>合算された受注内訳</h4>
             <div class="table-responsive">
@@ -99,6 +138,9 @@
     <div style="position: sticky; top: 20px;">
         <div class="card" style="padding: 1.5rem;">
             <h4 style="margin-top: 0; border-bottom: 1px solid #ddd; padding-bottom: 10px;">送付アクション</h4>
+            {% if invoice.status.name == 'CONSOLIDATED' %}
+            <p style="font-size: 0.9rem; color: #666;">統合済みの個別請求書は送付・入金・削除の対象外です。</p>
+            {% else %}
             
             <div style="margin-bottom: 1.5rem;">
                 <p style="font-size: 0.9rem; color: #666;">現在の状態：</p>
@@ -151,6 +193,7 @@
             <form action="/invoices/delete/{{ invoice.id }}" method="post" style="margin-top: 10px;">
                 <button type="submit" class="btn btn-sm btn-danger" style="width: 100%;" onclick="return confirm('請求書を削除し、紐づく受注を未請求状態に戻しますか？')">請求書を削除(解除)</button>
             </form>
+            {% endif %}
         </div>
     </div>
 </div>

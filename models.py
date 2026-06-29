@@ -19,6 +19,7 @@ class InvoiceStatus(enum.Enum):
     UNPAID = "未入金"
     PAID = "入金済み"
     ISSUED = "発行済み"
+    CONSOLIDATED = "統合済み"
 
 class CustomerRank(enum.Enum):
     RETAIL = "小売り"
@@ -113,10 +114,12 @@ class Order(Base):
     is_bulk_discount = Column(Boolean, default=False)
     status = Column(Enum(OrderStatus), default=OrderStatus.PENDING)
     invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True)
+    consolidated_source_invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True)
     memo = Column(String)
 
     quotation = relationship("Quotation", back_populates="order")
-    invoice = relationship("Invoice", back_populates="orders")
+    invoice = relationship("Invoice", back_populates="orders", foreign_keys=[invoice_id])
+    consolidated_source_invoice = relationship("Invoice", foreign_keys=[consolidated_source_invoice_id])
 
 class Invoice(Base):
     __tablename__ = "invoices"
@@ -130,10 +133,13 @@ class Invoice(Base):
     is_bulk_discount = Column(Boolean, default=False)
     status = Column(Enum(InvoiceStatus), default=InvoiceStatus.UNPAID)
     delivery_status = Column(String, default="UNSENT") # UNSENT, SENT, MAILED
+    consolidated_invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True)
     memo = Column(String)
 
-    orders = relationship("Order", back_populates="invoice")
+    orders = relationship("Order", back_populates="invoice", foreign_keys=[Order.invoice_id])
     customer = relationship("Customer")
+    consolidated_invoice = relationship("Invoice", remote_side=[id], back_populates="consolidated_source_invoices")
+    consolidated_source_invoices = relationship("Invoice", back_populates="consolidated_invoice")
 
 class AgencyOrder(Base):
     """代理店からの発注"""
@@ -145,12 +151,14 @@ class AgencyOrder(Base):
     total_amount = Column(Float, default=0.0)
     status = Column(String, default="未処理")  # 未処理 / 処理済み / キャンセル
     invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True)
+    consolidated_source_invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True)
     converted_order_id = Column(Integer, ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
     memo = Column(String, nullable=True)
 
     customer = relationship("Customer", back_populates="agency_orders")
     items = relationship("AgencyOrderItem", back_populates="agency_order", cascade="all, delete-orphan")
-    invoice = relationship("Invoice", backref="agency_orders")
+    invoice = relationship("Invoice", backref="agency_orders", foreign_keys=[invoice_id])
+    consolidated_source_invoice = relationship("Invoice", foreign_keys=[consolidated_source_invoice_id])
     converted_order = relationship("Order", foreign_keys=[converted_order_id])
 
 class AgencyOrderItem(Base):

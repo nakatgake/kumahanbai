@@ -264,15 +264,24 @@ def migrate_db():
     if 'customer_id' not in cols:
         print("Migrating invoices: adding customer_id column...")
         cursor.execute("ALTER TABLE invoices ADD COLUMN customer_id INTEGER")
+    if 'consolidated_invoice_id' not in cols:
+        print("Migrating invoices: adding consolidated_invoice_id column...")
+        cursor.execute("ALTER TABLE invoices ADD COLUMN consolidated_invoice_id INTEGER")
     
     cursor.execute("PRAGMA table_info(orders)")
     cols = [row[1] for row in cursor.fetchall()]
     if 'invoice_id' not in cols:
         print("Migrating orders: adding invoice_id column...")
         cursor.execute("ALTER TABLE orders ADD COLUMN invoice_id INTEGER")
+    if 'consolidated_source_invoice_id' not in cols:
+        print("Migrating orders: adding consolidated_source_invoice_id column...")
+        cursor.execute("ALTER TABLE orders ADD COLUMN consolidated_source_invoice_id INTEGER")
 
     cursor.execute("PRAGMA table_info(agency_orders)")
     cols = [row[1] for row in cursor.fetchall()]
+    if 'consolidated_source_invoice_id' not in cols:
+        print("Migrating agency_orders: adding consolidated_source_invoice_id column...")
+        cursor.execute("ALTER TABLE agency_orders ADD COLUMN consolidated_source_invoice_id INTEGER")
     if 'converted_order_id' not in cols:
         print("Migrating agency_orders: adding converted_order_id column...")
         cursor.execute("ALTER TABLE agency_orders ADD COLUMN converted_order_id INTEGER")
@@ -342,9 +351,79 @@ def is_invoice_locked(invoice: models.Invoice) -> bool:
     if not invoice:
         return False
     return (
-        invoice.status in (models.InvoiceStatus.ISSUED, models.InvoiceStatus.PAID)
+        invoice.status in (
+            models.InvoiceStatus.ISSUED,
+            models.InvoiceStatus.PAID,
+            models.InvoiceStatus.CONSOLIDATED,
+        )
         or invoice.delivery_status in ("SENT", "MAILED")
     )
+
+def restore_consolidated_sources(db: Session, invoice: models.Invoice) -> int:
+    """合算請求書を取り消すとき、統合済みの元請求書を未入金へ戻す。"""
+    source_invoices = db.query(models.Invoice).filter_by(consolidated_invoice_id=invoice.id).all()
+    restored_count = 0
+    restored_order_ids = set()
+    restored_agency_order_ids = set()
+
+    for source_invoice in source_invoices:
+        source_invoice.status = models.InvoiceStatus.UNPAID
+        source_invoice.delivery_status = "UNSENT"
+        source_invoice.consolidated_invoice = None
+        source_invoice.consolidated_invoice_id = None
+
+        source_orders = db.query(models.Order).filter(
+            models.Order.invoice_id == invoice.id,
+            models.Order.consolidated_source_invoice_id == source_invoice.id,
+        ).all()
+        for order in source_orders:
+            order.invoice = source_invoice
+            order.invoice_id = source_invoice.id
+            order.consolidated_source_invoice_id = None
+            restored_order_ids.add(order.id)
+
+        source_agency_orders = db.query(models.AgencyOrder).filter(
+            models.AgencyOrder.invoice_id == invoice.id,
+            models.AgencyOrder.consolidated_source_invoice_id == source_invoice.id,
+        ).all()
+        for agency_order in source_agency_orders:
+            agency_order.invoice = source_invoice
+            agency_order.invoice_id = source_invoice.id
+            agency_order.consolidated_source_invoice_id = None
+            restored_agency_order_ids.add(agency_order.id)
+
+        restored_count += 1
+
+    shadow_orders = db.query(models.Order).filter(
+        models.Order.invoice_id == invoice.id,
+        models.Order.order_number.contains("SHADOW"),
+    ).all()
+    for shadow in shadow_orders:
+        if shadow.quotation:
+            db.delete(shadow.quotation)
+        db.delete(shadow)
+
+    remaining_orders = db.query(models.Order).filter_by(invoice_id=invoice.id).all()
+    for order in remaining_orders:
+        if order.id in restored_order_ids:
+            continue
+        if order.order_number and "SHADOW" in order.order_number:
+            continue
+        if order.consolidated_source_invoice_id:
+            order.consolidated_source_invoice_id = None
+        order.invoice = None
+        order.invoice_id = None
+
+    remaining_agency_orders = db.query(models.AgencyOrder).filter_by(invoice_id=invoice.id).all()
+    for agency_order in remaining_agency_orders:
+        if agency_order.id in restored_agency_order_ids:
+            continue
+        if agency_order.consolidated_source_invoice_id:
+            agency_order.consolidated_source_invoice_id = None
+        agency_order.invoice = None
+        agency_order.invoice_id = None
+
+    return restored_count
 
 def invoice_tax_summary(amount_excl_tax: float, tax_rate: float = 0.1) -> dict:
     amount = Decimal(str(amount_excl_tax or 0))
@@ -517,6 +596,7 @@ def consolidate_monthly_invoice_for_customer(
         if ao.invoice_id and (not invoice or ao.invoice_id != invoice.id)
     )
 
+    source_invoice_ids_to_consolidate = set()
     for old_inv_id in other_invoice_ids:
         old_inv = db.query(models.Invoice).get(old_inv_id)
         if not old_inv or is_invoice_locked(old_inv):
@@ -524,10 +604,14 @@ def consolidate_monthly_invoice_for_customer(
 
         for old_order in list(old_inv.orders):
             if old_order.id in selected_standard_ids:
+                old_order.consolidated_source_invoice_id = old_inv.id
+                old_order.invoice = None
                 old_order.invoice_id = None
 
         for old_agency_order in db.query(models.AgencyOrder).filter_by(invoice_id=old_inv.id).all():
             if old_agency_order.id in selected_agency_ids:
+                old_agency_order.consolidated_source_invoice_id = old_inv.id
+                old_agency_order.invoice = None
                 old_agency_order.invoice_id = None
 
         db.flush()
@@ -538,7 +622,9 @@ def consolidate_monthly_invoice_for_customer(
         if remaining_standard_orders or remaining_agency_orders:
             old_inv.total_amount = float(remaining_standard_total + remaining_agency_total)
         else:
-            db.delete(old_inv)
+            old_inv.status = models.InvoiceStatus.CONSOLIDATED
+            old_inv.delivery_status = "UNSENT"
+            source_invoice_ids_to_consolidate.add(old_inv.id)
 
     db.flush()
 
@@ -570,7 +656,13 @@ def consolidate_monthly_invoice_for_customer(
         invoice.due_date = datetime.datetime.combine(due_date, datetime.time.min)
         invoice.memo = memo_label
 
+    for old_inv_id in source_invoice_ids_to_consolidate:
+        old_inv = db.query(models.Invoice).get(old_inv_id)
+        if old_inv:
+            old_inv.consolidated_invoice_id = invoice.id
+
     for order in standard_orders:
+        order.invoice = invoice
         order.invoice_id = invoice.id
 
     existing_shadows = db.query(models.Order).filter(
@@ -598,6 +690,9 @@ def consolidate_monthly_invoice_for_customer(
         db.flush()
 
         for agency_order in agency_orders:
+            if agency_order.invoice_id and agency_order.invoice_id != invoice.id and not agency_order.consolidated_source_invoice_id:
+                agency_order.consolidated_source_invoice_id = agency_order.invoice_id
+            agency_order.invoice = invoice
             agency_order.invoice_id = invoice.id
             for item in agency_order.items:
                 qi = models.QuotationItem(
@@ -857,7 +952,10 @@ async def dashboard(
     # 請求関連サマリー（ダッシュボード用）
     try:
         # 発送待ち件数（未発送の請求書）
-        dispatch_pending = db.query(models.Invoice).filter(models.Invoice.delivery_status == "UNSENT").count()
+        dispatch_pending = db.query(models.Invoice).filter(
+            models.Invoice.delivery_status == "UNSENT",
+            models.Invoice.status != models.InvoiceStatus.CONSOLIDATED,
+        ).count()
         
         # 本日の自動締処理分
         today_start = datetime.datetime.combine(jst_today(), datetime.time.min)
@@ -2199,6 +2297,8 @@ async def list_invoices(
     if end_date:
         end_dt = datetime.datetime.strptime(end_date, '%Y-%m-%d') + datetime.timedelta(days=1)
         query = query.filter(models.Invoice.issue_date < end_dt)
+    if not q:
+        query = query.filter(models.Invoice.status != models.InvoiceStatus.CONSOLIDATED)
         
     invoices = query.order_by(models.Invoice.id.desc()).all()
     return templates.TemplateResponse(request=request, name="invoices/list.html", context={
@@ -2231,6 +2331,8 @@ async def export_invoices_excel(
     if end_date:
         end_dt = datetime.datetime.strptime(end_date, '%Y-%m-%d') + datetime.timedelta(days=1)
         query = query.filter(models.Invoice.issue_date < end_dt)
+    if not q:
+        query = query.filter(models.Invoice.status != models.InvoiceStatus.CONSOLIDATED)
         
     invoices = query.order_by(models.Invoice.id.desc()).all()
     
@@ -2426,7 +2528,7 @@ async def cancel_shipping(order_id: int, db: Session = Depends(get_db), user: mo
 @app.post("/invoices/{invoice_id}/pay")
 async def mark_as_paid(invoice_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
     invoice = db.query(models.Invoice).get(invoice_id)
-    if invoice:
+    if invoice and invoice.status != models.InvoiceStatus.CONSOLIDATED:
         invoice.status = models.InvoiceStatus.PAID
         db.commit()
     return RedirectResponse(url="/invoices", status_code=303)
@@ -2434,7 +2536,7 @@ async def mark_as_paid(invoice_id: int, db: Session = Depends(get_db), user: mod
 @app.post("/invoices/{id}/mark_issued")
 async def mark_issued(id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
     invoice = db.query(models.Invoice).get(id)
-    if invoice:
+    if invoice and invoice.status != models.InvoiceStatus.CONSOLIDATED:
         invoice.status = models.InvoiceStatus.ISSUED
         db.commit()
     return RedirectResponse(url="/invoices", status_code=303)
@@ -2442,7 +2544,7 @@ async def mark_issued(id: int, db: Session = Depends(get_db), user: models.User 
 @app.post("/invoices/{id}/unmark_issued")
 async def unmark_issued(id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
     invoice = db.query(models.Invoice).get(id)
-    if invoice:
+    if invoice and invoice.status != models.InvoiceStatus.CONSOLIDATED:
         invoice.status = models.InvoiceStatus.UNPAID
         db.commit()
     return RedirectResponse(url="/invoices", status_code=303)
@@ -2458,6 +2560,9 @@ async def set_invoice_status(
     status_name = form_data.get(f"status_{invoice_id}")
     invoice = db.query(models.Invoice).get(invoice_id)
     if invoice and status_name:
+        if invoice.status == models.InvoiceStatus.CONSOLIDATED:
+            from fastapi.responses import Response
+            return Response(status_code=204)
         try:
             invoice.status = models.InvoiceStatus[status_name]
             db.commit()
@@ -2471,6 +2576,8 @@ async def set_invoice_status(
 @app.get("/invoices/edit/{invoice_id}", response_class=HTMLResponse)
 async def edit_invoice(invoice_id: int, request: Request, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
     invoice = db.query(models.Invoice).get(invoice_id)
+    if invoice and invoice.status == models.InvoiceStatus.CONSOLIDATED:
+        return RedirectResponse(url=f"/invoices/{invoice.id}", status_code=303)
     return templates.TemplateResponse(request=request, name="invoices/form.html", context={
         "request": request,
         "active_page": "invoices",
@@ -2494,6 +2601,8 @@ async def update_invoice(
     invoice = db.query(models.Invoice).get(invoice_id)
     if not invoice:
         return RedirectResponse(url="/invoices", status_code=303)
+    if invoice.status == models.InvoiceStatus.CONSOLIDATED:
+        return RedirectResponse(url=f"/invoices/{invoice.id}", status_code=303)
     
     invoice.invoice_number = invoice_number
     try:
@@ -2523,18 +2632,36 @@ async def view_invoice(request: Request, id: int, db: Session = Depends(get_db),
     if sync_invoice_total_from_lines(invoice):
         db.commit()
         db.refresh(invoice)
+
+    source_invoices = db.query(models.Invoice).filter_by(
+        consolidated_invoice_id=invoice.id
+    ).order_by(models.Invoice.id).all()
     
     return templates.TemplateResponse(request=request, name="invoices/detail.html", context={
         "request": request,
         "invoice": invoice,
         "customer": invoice.customer,
-        "orders": invoice.orders
+        "orders": invoice.orders,
+        "source_invoices": source_invoices,
     })
 
 @app.post("/invoices/delete/{invoice_id}")
 async def delete_invoice(invoice_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_active_user)):
     invoice = db.query(models.Invoice).get(invoice_id)
     if invoice:
+        if invoice.status == models.InvoiceStatus.CONSOLIDATED:
+            return RedirectResponse(url=f"/invoices/{invoice.id}?error=consolidated_delete", status_code=303)
+
+        source_invoices = db.query(models.Invoice).filter_by(consolidated_invoice_id=invoice.id).all()
+        is_consolidated_parent = bool(source_invoices) or ("合算請求書" in (invoice.memo or ""))
+        if is_consolidated_parent:
+            restore_consolidated_sources(db, invoice)
+            db.delete(invoice)
+            db.commit()
+            response = RedirectResponse(url="/invoices", status_code=303)
+            response.headers["HX-Refresh"] = "true"
+            return response
+
         # 紐づくすべての受注の在庫を戻し、紐付けを解除する
         for order in invoice.orders:
             if order.quotation:
